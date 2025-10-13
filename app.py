@@ -7,12 +7,15 @@ from flask import Flask, render_template, request, redirect, url_for, flash
 app = Flask(__name__)
 app.secret_key = os.urandom(24)  # Needed for flashing messages
 
-DATABASE_FILE = 'shepherd.db'
-
-# --- Database Functions ---
+# --- Updated Configuration ---
+# Store the database in a dedicated data directory in the user's home
+DATA_DIR = os.path.expanduser('~/shepherd_data')
+DATABASE_FILE = os.path.join(DATA_DIR, 'shepherd.db')
 
 def get_db_connection():
     """Establishes a connection to the SQLite database."""
+    # Ensure the data directory exists
+    os.makedirs(DATA_DIR, exist_ok=True)
     conn = sqlite3.connect(DATABASE_FILE, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA journal_mode=WAL;')

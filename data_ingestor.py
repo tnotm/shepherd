@@ -7,7 +7,8 @@ import re
 from datetime import datetime, timedelta
 
 # --- Configuration ---
-DATABASE_FILE = 'shepherd.db'
+DATA_DIR = os.path.expanduser('~/shepherd_data')
+DATABASE_FILE = os.path.join(DATA_DIR, 'shepherd.db')
 LOG_RETENTION_MINUTES = 10
 CLEANUP_INTERVAL_MINUTES = 10
 
@@ -18,9 +19,11 @@ data_queue = queue.Queue()
 
 def get_db_connection():
     """Establishes a connection to the SQLite database."""
-    conn = sqlite3.connect(DATABASE_FILE, timeout=10) # 10-second timeout
+    # Ensure the data directory exists
+    os.makedirs(DATA_DIR, exist_ok=True)
+    conn = sqlite3.connect(DATABASE_FILE, timeout=10)
     conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA journal_mode=WAL;') # Enable Write-Ahead Logging
+    conn.execute('PRAGMA journal_mode=WAL;')
     return conn
 
 def get_configured_miners(conn):

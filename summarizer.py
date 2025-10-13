@@ -3,7 +3,8 @@ import time
 from datetime import datetime, timedelta
 
 # --- Configuration ---
-DATABASE_FILE = 'shepherd.db'
+DATA_DIR = os.path.expanduser('~/shepherd_data')
+DATABASE_FILE = os.path.join(DATA_DIR, 'shepherd.db')
 # How often the summarizer runs
 AGGREGATION_INTERVAL_SECONDS = 5 
 # How far back to look in the raw logs to find the latest data point
@@ -13,10 +14,13 @@ DATA_WINDOW_MINUTES = 2
 
 def get_db_connection():
     """Establishes a connection to the SQLite database."""
+    # Ensure the data directory exists
+    os.makedirs(DATA_DIR, exist_ok=True)
     conn = sqlite3.connect(DATABASE_FILE, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA journal_mode=WAL;')
     return conn
+
 
 # --- Main Application Logic ---
 
