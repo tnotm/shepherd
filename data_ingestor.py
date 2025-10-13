@@ -8,8 +8,7 @@ import os
 from datetime import datetime, timedelta
 
 # --- Configuration ---
-# --- NEW: Set to True to print all incoming serial data ---
-DEBUG_MODE = True 
+DEBUG_MODE = False
 # ---------------------------------------------------------
 
 DATA_DIR = os.path.expanduser('~/shepherd_data')
@@ -39,7 +38,7 @@ def get_configured_miners(conn):
 # --- Worker Threads ---
 
 def monitor_miner(tty_symlink, miner_info):
-    """A thread function that monitors a single miner's serial port."""
+    """A thread that monitors a serial port and puts all data/status into a queue."""
     thread_name = threading.current_thread().name
     miner_db_id = miner_info['db_id']
     log_pattern = re.compile(r'>>>\s*(?P<key>.+?):\s*(?P<value>.+)')
@@ -49,24 +48,23 @@ def monitor_miner(tty_symlink, miner_info):
         try:
             ser = serial.Serial(f'/dev/{tty_symlink}', 115200, timeout=1)
             print(f"[{thread_name}] Successfully connected to {tty_symlink}.")
-            
-            with get_db_connection() as conn:
-                conn.execute("UPDATE miners SET status = 'online', last_seen = ? WHERE id = ?;", (datetime.utcnow(), miner_db_id))
-                conn.commit()
+            # --- MODIFIED: Put status update on queue instead of writing to DB ---
+            data_queue.put(('STATUS', miner_db_id, 'online'))
+            # --------------------------------------------------------------------
 
             while ser.is_open:
                 try:
                     line = ser.readline().decode('utf-8', errors='ignore').strip()
                     if line:
-                        # --- MODIFIED: Print line if in debug mode ---
                         if DEBUG_MODE:
                             print(f"[{thread_name}] RAW: {line}")
-                        # ----------------------------------------------
                         
                         match = log_pattern.match(line)
                         if match:
                             data = match.groupdict()
-                            data_queue.put((miner_db_id, data['key'], data['value']))
+                            # --- MODIFIED: Put log data on queue ---
+                            data_queue.put(('LOG', miner_db_id, data['key'], data['value']))
+                            # ---------------------------------------
                 except serial.SerialException:
                     print(f"[{thread_name}] Device {tty_symlink} disconnected. Retrying...")
                     break
@@ -76,9 +74,9 @@ def monitor_miner(tty_symlink, miner_info):
 
         except serial.SerialException as e:
             print(f"[{thread_name}] Could not open port {tty_symlink}: {e}. Retrying in 10 seconds...")
-            with get_db_connection() as conn:
-                conn.execute("UPDATE miners SET status = 'offline' WHERE id = ?;", (miner_db_id,))
-                conn.commit()
+            # --- MODIFIED: Put status update on queue instead of writing to DB ---
+            data_queue.put(('STATUS', miner_db_id, 'offline'))
+            # --------------------------------------------------------------------
         finally:
             if ser and ser.is_open:
                 ser.close()
@@ -86,28 +84,37 @@ def monitor_miner(tty_symlink, miner_info):
 
 
 def database_writer():
-    """A thread that pulls data from the queue and writes it to the database."""
+    """A thread that pulls data from the queue and is the ONLY writer to the database."""
     thread_name = threading.current_thread().name
     while True:
         try:
             with get_db_connection() as conn:
                 while True:
-                    miner_id, log_key, log_value = data_queue.get()
-                    
-                    conn.execute("""
-                        INSERT INTO miner_logs (miner_id, log_key, log_value, created_at)
-                        VALUES (?, ?, ?, ?);
-                    """, (miner_id, log_key, log_value, datetime.utcnow()))
-                    
-                    conn.execute("""
-                        UPDATE miners SET last_seen = ? WHERE id = ?;
-                    """, (datetime.utcnow(), miner_id))
+                    # --- MODIFIED: Handle different message types from the queue ---
+                    item = data_queue.get()
+                    item_type = item[0]
+                    now_utc = datetime.utcnow()
 
+                    if item_type == 'LOG':
+                        _, miner_id, log_key, log_value = item
+                        conn.execute("""
+                            INSERT INTO miner_logs (miner_id, log_key, log_value, created_at)
+                            VALUES (?, ?, ?, ?);
+                        """, (miner_id, log_key, log_value, now_utc))
+                        conn.execute("UPDATE miners SET last_seen = ? WHERE id = ?;", (now_utc, miner_id))
+
+                    elif item_type == 'STATUS':
+                        _, miner_id, new_status = item
+                        conn.execute("UPDATE miners SET status = ?, last_seen = ? WHERE id = ?;", (new_status, now_utc, miner_id))
+                    
                     conn.commit()
                     data_queue.task_done()
+                    # -------------------------------------------------------------
+
         except Exception as e:
             print(f"[{thread_name}] Error writing to database: {e}. Reconnecting in 5s...")
             time.sleep(5)
+
 
 def cleanup_logs():
     """Periodically cleans up old logs from the miner_logs table."""
