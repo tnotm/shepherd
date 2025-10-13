@@ -31,4 +31,5 @@ jobs:
           echo "Restarting Shepherd services..."
           sudo systemctl restart shepherd-app.service
           sudo systemctl restart shepherd-ingestor.service
+          sudo systemctl restart shepherd-summarizer.service
           echo "Deployment complete."
