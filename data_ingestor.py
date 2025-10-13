@@ -5,7 +5,7 @@ import threading
 import queue
 import re
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 # --- Configuration ---
 DEBUG_MODE = False
@@ -48,9 +48,7 @@ def monitor_miner(tty_symlink, miner_info):
         try:
             ser = serial.Serial(f'/dev/{tty_symlink}', 115200, timeout=1)
             print(f"[{thread_name}] Successfully connected to {tty_symlink}.")
-            # --- MODIFIED: Put status update on queue instead of writing to DB ---
             data_queue.put(('STATUS', miner_db_id, 'online'))
-            # --------------------------------------------------------------------
 
             while ser.is_open:
                 try:
@@ -62,9 +60,7 @@ def monitor_miner(tty_symlink, miner_info):
                         match = log_pattern.match(line)
                         if match:
                             data = match.groupdict()
-                            # --- MODIFIED: Put log data on queue ---
                             data_queue.put(('LOG', miner_db_id, data['key'], data['value']))
-                            # ---------------------------------------
                 except serial.SerialException:
                     print(f"[{thread_name}] Device {tty_symlink} disconnected. Retrying...")
                     break
@@ -74,9 +70,7 @@ def monitor_miner(tty_symlink, miner_info):
 
         except serial.SerialException as e:
             print(f"[{thread_name}] Could not open port {tty_symlink}: {e}. Retrying in 10 seconds...")
-            # --- MODIFIED: Put status update on queue instead of writing to DB ---
             data_queue.put(('STATUS', miner_db_id, 'offline'))
-            # --------------------------------------------------------------------
         finally:
             if ser and ser.is_open:
                 ser.close()
@@ -90,26 +84,26 @@ def database_writer():
         try:
             with get_db_connection() as conn:
                 while True:
-                    # --- MODIFIED: Handle different message types from the queue ---
                     item = data_queue.get()
                     item_type = item[0]
-                    now_utc = datetime.utcnow()
+                    # --- MODIFIED: Use timezone-aware datetime and convert to ISO string ---
+                    now_iso = datetime.now(UTC).isoformat()
 
                     if item_type == 'LOG':
                         _, miner_id, log_key, log_value = item
                         conn.execute("""
                             INSERT INTO miner_logs (miner_id, log_key, log_value, created_at)
                             VALUES (?, ?, ?, ?);
-                        """, (miner_id, log_key, log_value, now_utc))
-                        conn.execute("UPDATE miners SET last_seen = ? WHERE id = ?;", (now_utc, miner_id))
+                        """, (miner_id, log_key, log_value, now_iso))
+                        conn.execute("UPDATE miners SET last_seen = ? WHERE id = ?;", (now_iso, miner_id))
 
                     elif item_type == 'STATUS':
                         _, miner_id, new_status = item
-                        conn.execute("UPDATE miners SET status = ?, last_seen = ? WHERE id = ?;", (new_status, now_utc, miner_id))
+                        conn.execute("UPDATE miners SET status = ?, last_seen = ? WHERE id = ?;", (new_status, now_iso, miner_id))
                     
                     conn.commit()
                     data_queue.task_done()
-                    # -------------------------------------------------------------
+                    # -------------------------------------------------------------------------
 
         except Exception as e:
             print(f"[{thread_name}] Error writing to database: {e}. Reconnecting in 5s...")
@@ -123,11 +117,13 @@ def cleanup_logs():
         time.sleep(CLEANUP_INTERVAL_MINUTES * 60)
         try:
             with get_db_connection() as conn:
-                cutoff_time = datetime.utcnow() - timedelta(minutes=LOG_RETENTION_MINUTES)
+                # --- MODIFIED: Use timezone-aware datetime and convert to ISO string for comparison ---
+                cutoff_time = datetime.now(UTC) - timedelta(minutes=LOG_RETENTION_MINUTES)
+                cutoff_iso = cutoff_time.isoformat()
                 cursor = conn.cursor()
-                cursor.execute("DELETE FROM miner_logs WHERE created_at < ?;", (cutoff_time,))
+                cursor.execute("DELETE FROM miner_logs WHERE created_at < ?;", (cutoff_iso,))
                 conn.commit()
-                print(f"[{thread_name}] Deleted {cursor.rowcount} logs older than {cutoff_time}.")
+                print(f"[{thread_name}] Deleted {cursor.rowcount} logs older than {cutoff_iso}.")
         except Exception as e:
             print(f"[{thread_name}] Error during log cleanup: {e}")
 
