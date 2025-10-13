@@ -3,128 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Shepherd Project - Miner Dashboard</title>
+    <title>The Shepherd Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Alpine.js for simple dropdown interactivity -->
-    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-        .status-online { color: #22c55e; }
-        .status-offline { color: #ef4444; }
-        .status-unknown { color: #f97316; }
-    </style>
+    <script>
+        // Refresh page data every 5 seconds
+        setInterval(() => {
+            fetch(window.location.href)
+                .then(response => response.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    document.getElementById('miner-table-body').innerHTML = doc.getElementById('miner-table-body').innerHTML;
+                })
+                .catch(err => console.error('Failed to refresh data:', err));
+        }, 5000);
+    </script>
 </head>
-<body class="bg-gray-900 text-gray-200">
-
-    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+<body class="bg-gray-900 text-gray-200 font-sans">
+    <div class="container mx-auto p-4 md:p-8">
         
-        <!-- Header with Menu -->
-        <header class="flex justify-between items-center mb-8">
-            <div>
-                <h1 class="text-4xl font-bold text-white">The Shepherd Project</h1>
-                <p class="text-lg text-gray-400">Live Miner Fleet Dashboard</p>
-            </div>
-            <!-- Dropdown Menu -->
-            <div x-data="{ open: false }" class="relative">
-                <button @click="open = !open" class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:bg-gray-700 focus:text-white">
-                    <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
-                        <path :class="{'hidden': open, 'inline-flex': !open }" class="inline-flex" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-                        <path :class="{'hidden': !open, 'inline-flex': open }" class="hidden" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold text-cyan-400">The Shepherd Dashboard</h1>
+            <div class="relative">
+                <a href="/config" class="bg-gray-700 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded inline-flex items-center transition-colors duration-300">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0L8.12 5.12 6.17 5.5a1.75 1.75 0 00-1.2.57l-1.3 1.3a1.75 1.75 0 00-.09 2.37l.43.86a1.75 1.75 0 001.6 1.18h2.09l-.49 1.95c-.38 1.56 1.84 2.89 3.42 1.89l1.49-.93a1.75 1.75 0 00.93-1.49l.13-2.1a1.75 1.75 0 00-1.18-1.6l-2.1-.53.49-1.95 1.95.49a1.75 1.75 0 002.37-.09l1.3-1.3a1.75 1.75 0 00.57-1.2l.38-1.95-1.95-.38zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
                     </svg>
-                </button>
-                <div x-show="open" @click.away="open = false" class="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-gray-800 ring-1 ring-black ring-opacity-5 z-10">
-                    <a href="{{ url_for('config') }}" class="flex items-center px-4 py-2 text-sm text-gray-300 hover:bg-gray-700">
-                        <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-1.007 1.11-1.226M10.343 3.94a2.25 2.25 0 0 1 3.314 0c.55.219 1.02.684 1.11 1.226M10.343 3.94c-1.552 0-2.942.582-4.01 1.587L4.36 4.36a2.25 2.25 0 0 0-3.182 3.182l2.122 2.121c.582 1.068 1.587 2.46 1.587 4.01V13.5a2.25 2.25 0 0 0 2.25 2.25h1.5M13.5 15.75v-1.5a2.25 2.25 0 0 0-2.25-2.25H9.75m4.996 0A2.25 2.25 0 0 1 17.25 12v-1.5a2.25 2.25 0 0 1 2.25-2.25h1.5m-6.75 6.75v1.5a2.25 2.25 0 0 0 2.25 2.25h1.5a2.25 2.25 0 0 0 2.25-2.25v-1.5m-6.75 6.75h1.5a2.25 2.25 0 0 0 2.25-2.25v-1.5" />
-                        </svg>
-                        Configuration
-                    </a>
-                </div>
+                    <span>Configuration</span>
+                </a>
             </div>
         </header>
 
-
-        <main>
-            <!-- Miner Data Table -->
-            <div class="bg-gray-800 shadow-lg rounded-xl overflow-hidden">
-                <table class="min-w-full">
-                    <thead class="bg-gray-700">
-                        <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">ID</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Symlink</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden sm:table-cell">Hash Rate</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden md:table-cell">Temp</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider hidden lg:table-cell">Last Seen</th>
-                        </tr>
-                    </thead>
-                    <tbody id="miners-table-body" class="divide-y divide-gray-700">
-                        <!-- Miner data will be injected here by JavaScript -->
-                    </tbody>
-                </table>
-            </div>
-             <div class="text-center mt-4 text-gray-500 text-sm">
-                <p>Data refreshing every 5 seconds. Last updated: <span id="last-updated"></span></p>
-            </div>
-        </main>
-    </div>
-
-    <script>
-        const tableBody = document.getElementById('miners-table-body');
-        const lastUpdatedSpan = document.getElementById('last-updated');
-
-        async function fetchMinerData() {
-            try {
-                const response = await fetch('/api/miners');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const miners = await response.json();
-                updateTable(miners);
-            } catch (error) {
-                console.error("Could not fetch miner data:", error);
-                tableBody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-red-400">Error loading data. Is the server running?</td></tr>`;
-            }
-        }
-
-        function updateTable(miners) {
-            tableBody.innerHTML = '';
-
-            if (miners.length === 0) {
-                tableBody.innerHTML = `<tr><td colspan="6" class="text-center py-4">No miners found in the database. Go to Configuration to upload a CSV.</td></tr>`;
-                return;
-            }
-            
-            miners.forEach(miner => {
-                const statusClass = miner.status === 'online' ? 'status-online' : (miner.status === 'offline' ? 'status-offline' : 'status-unknown');
-                const hashRate = miner.hash_rate ? `${miner.hash_rate.toFixed(2)} KH/s` : 'N/A';
-                const temp = miner.temperature ? `${miner.temperature.toFixed(1)}°C` : 'N/A';
-                const lastSeen = miner.last_seen ? new Date(miner.last_seen).toLocaleString() : 'Never';
-
-                const row = `
-                    <tr class="hover:bg-gray-700/50">
-                        <td class="px-6 py-4 whitespace-nowrap font-mono">${miner.id.toString().padStart(2, '0')}</td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <span class="font-bold ${statusClass}">${miner.status.charAt(0).toUpperCase() + miner.status.slice(1)}</span>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap font-mono text-sm">${miner.tty_symlink}</td>
-                        <td class="px-6 py-4 whitespace-nowrap hidden sm:table-cell">${hashRate}</td>
-                        <td class="px-6 py-4 whitespace-nowrap hidden md:table-cell">${temp}</td>
-                        <td class="px-6 py-4 whitespace-nowrap hidden lg:table-cell text-sm">${lastSeen}</td>
+        <!-- Miner Table -->
+        <div class="bg-gray-800 shadow-md rounded-lg overflow-x-auto">
+            <table class="min-w-full leading-normal">
+                <thead>
+                    <tr>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Miner ID</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Status</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Last Seen</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Chipset</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">TTY Symlink</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Version</th>
                     </tr>
-                `;
-                tableBody.innerHTML += row;
-            });
-            
-            lastUpdatedSpan.textContent = new Date().toLocaleTimeString();
-        }
-
-        // Fetch data immediately on page load, and then every 5 seconds
-        document.addEventListener('DOMContentLoaded', () => {
-            fetchMinerData();
-            setInterval(fetchMinerData, 5000);
-        });
-    </script>
+                </thead>
+                <tbody id="miner-table-body">
+                    {% for miner in miners %}
+                    <tr class="hover:bg-gray-700">
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm">
+                            <p class="text-gray-100 whitespace-no-wrap">{{ miner.miner_id }}</p>
+                        </td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm">
+                            <span class="relative inline-block px-3 py-1 font-semibold leading-tight
+                                {% if miner.status == 'online' %} text-green-300 bg-green-800 rounded-full
+                                {% elif miner.status == 'offline' %} text-red-300 bg-red-800 rounded-full
+                                {% else %} text-yellow-300 bg-yellow-800 rounded-full {% endif %}">
+                                <span class="relative">{{ miner.status | capitalize }}</span>
+                            </span>
+                        </td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm">
+                            <p class="text-gray-400 whitespace-no-wrap">{{ miner.last_seen or 'Never' }}</p>
+                        </td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm">
+                            <p class="text-gray-100 whitespace-no-wrap">{{ miner.chipset }}</p>
+                        </td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm">
+                            <p class="text-gray-400 whitespace-no-wrap">{{ miner.tty_symlink or 'N/A' }}</p>
+                        </td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm">
+                            <p class="text-gray-100 whitespace-no-wrap">{{ miner.nerdminer_vrs or 'N/A' }}</p>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-10 text-gray-500">No miners configured. Please upload a CSV file on the Configuration page.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </body>
 </html>
 

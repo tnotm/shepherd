@@ -3,57 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Configuration - The Shepherd Project</title>
+    <title>Configuration - The Shepherd</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-    </style>
 </head>
-<body class="bg-gray-900 text-gray-200">
+<body class="bg-gray-900 text-gray-200 font-sans">
+    <div class="container mx-auto p-4 md:p-8">
 
-    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
-        
-        <!-- Header with Back Button -->
-        <header class="flex justify-between items-center mb-8">
-            <div>
-                <h1 class="text-4xl font-bold text-white">Configuration</h1>
-                <p class="text-lg text-gray-400">Manage Miner Fleet Settings</p>
-            </div>
-            <a href="{{ url_for('index') }}" class="px-6 py-2 bg-gray-700 text-white font-semibold rounded-lg hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50 transition-colors">
-                Main
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold text-cyan-400">Configuration</h1>
+            <a href="/" class="bg-gray-700 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded inline-flex items-center transition-colors duration-300">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+                <span>Main Dashboard</span>
             </a>
         </header>
 
-        <main>
-            <!-- Upload Section -->
-            <div class="bg-gray-800 shadow-lg rounded-xl p-6 mb-8">
-                <h2 class="text-xl font-semibold text-white mb-4">Upload Miner Configuration</h2>
-                
-                <!-- This is where server messages (like 'upload successful') will appear -->
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                  {% if messages %}
-                    {% for category, message in messages %}
-                      <div class="p-4 mb-4 text-sm rounded-lg {% if category == 'error' %} bg-red-900 text-red-300 {% else %} bg-green-900 text-green-300 {% endif %}" role="alert">
-                        {{ message }}
-                      </div>
-                    {% endfor %}
-                  {% endif %}
-                {% endwith %}
-                
-                <form action="{{ url_for('upload_csv') }}" method="post" enctype="multipart/form-data">
-                    <div class="flex flex-col sm:flex-row items-center justify-between">
-                        <input class="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-gray-700 file:text-gray-300 hover:file:bg-gray-600 mb-4 sm:mb-0" type="file" name="file" accept=".csv" required>
-                        <button type="submit" class="w-full sm:w-auto ml-0 sm:ml-4 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-colors">
-                            Upload CSV
-                        </button>
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="p-4 mb-4 text-sm rounded-lg 
+                        {% if category == 'success' %} bg-green-800 text-green-200 
+                        {% else %} bg-red-800 text-red-200 {% endif %}" role="alert">
+                        <span class="font-medium">{{ category|capitalize }}!</span> {{ message }}
                     </div>
-                </form>
-            </div>
-            
-            <!-- Future configuration options can go here -->
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
 
-        </main>
+        <!-- Upload Section -->
+        <div class="bg-gray-800 shadow-md rounded-lg p-6">
+            <h2 class="text-xl font-semibold mb-4 text-cyan-300">Upload Miner Configuration</h2>
+            <p class="text-gray-400 mb-4">
+                Upload a CSV file to add or update your miner fleet. The file should contain a header row and `miner_id` must be unique.
+            </p>
+            <form action="/upload_csv" method="post" enctype="multipart/form-data">
+                <div class="flex items-center justify-center w-full">
+                    <label for="miner_file" class="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-600 border-dashed rounded-lg cursor-pointer bg-gray-700 hover:bg-gray-600">
+                        <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                            <svg class="w-8 h-8 mb-4 text-gray-500" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16">
+                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/>
+                            </svg>
+                            <p class="mb-2 text-sm text-gray-400"><span class="font-semibold">Click to upload</span> or drag and drop</p>
+                            <p class="text-xs text-gray-500">CSV file (e.g., miners_tbl.csv)</p>
+                        </div>
+                        <input id="miner_file" name="miner_file" type="file" class="hidden" accept=".csv" />
+                    </label>
+                </div>
+                <div class="mt-4 text-center">
+                     <button type="submit" class="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-6 rounded transition-colors duration-300">Upload File</button>
+                </div>
+            </form>
+        </div>
+
     </div>
-
 </body>
 </html>
+

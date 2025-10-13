@@ -1,196 +1,161 @@
-import sqlite3
 import serial
-import threading
+import sqlite3
 import time
+import threading
+import queue
 import re
 from datetime import datetime, timedelta
-import queue
 
-DB_FILE = 'shepherd.db'
-# This dictionary will hold our known miner symlinks and their primary key IDs.
-KNOWN_MINERS = {}
-# A thread-safe queue to hold data from all miner threads before writing to the DB.
-DATA_QUEUE = queue.Queue()
+# --- Configuration ---
+DATABASE_FILE = 'shepherd.db'
+LOG_RETENTION_MINUTES = 10
+CLEANUP_INTERVAL_MINUTES = 10
+
+# A thread-safe queue to hold all incoming data from the miners
+data_queue = queue.Queue()
+
+# --- Database Functions ---
 
 def get_db_connection():
-    """Establishes a connection to the database. Essential for each thread."""
-    # By adding a timeout, connections will wait for the specified time if the DB is locked.
-    conn = sqlite3.connect(DB_FILE, timeout=10, check_same_thread=False)
-    conn.execute('PRAGMA journal_mode=WAL;')
+    """Establishes a connection to the SQLite database."""
+    conn = sqlite3.connect(DATABASE_FILE, timeout=10) # 10-second timeout
+    conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA journal_mode=WAL;') # Enable Write-Ahead Logging
     return conn
 
-def update_miner_cache():
-    """
-    Reads the miners table and populates the KNOWN_MINERS dictionary.
-    This is called at the start to know which TTYs to listen to.
-    """
-    global KNOWN_MINERS
-    print("Updating miner cache from database...")
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, tty_symlink FROM miners WHERE tty_symlink IS NOT NULL;")
-        miners = cursor.fetchall()
-        conn.close()
-        
-        KNOWN_MINERS = {row[1]: row[0] for row in miners}
-        print(f"Found {len(KNOWN_MINERS)} configured miners to monitor.")
-    except Exception as e:
-        print(f"Error updating miner cache: {e}")
-        print("Please ensure the database exists and the 'miners' table has been created.")
-
-
-def parse_and_store_data(miner_db_id, line, conn):
-    """
-    Parses a single log line, updates the main 'miners' table for key stats,
-    and inserts the raw log into the 'miner_logs' table.
-    """
-    match = re.search(r'>>>\s*(.*?):\s*(.*)', line)
-    if not match:
-        return
-
-    metric_key = match.group(1).strip()
-    metric_value = match.group(2).strip()
-    timestamp = datetime.now().isoformat()
+def get_configured_miners(conn):
+    """Fetches the list of configured miners from the database."""
     cursor = conn.cursor()
+    cursor.execute("SELECT id, miner_id, tty_symlink FROM miners WHERE tty_symlink IS NOT NULL;")
+    miners = cursor.fetchall()
+    return {miner['tty_symlink']: {'miner_id': miner['miner_id'], 'db_id': miner['id']} for miner in miners}
 
-    # 1. Insert the raw metric into the logs table.
-    log_sql = "INSERT INTO miner_logs (miner_id, timestamp, metric_key, metric_value) VALUES (?, ?, ?, ?);"
-    cursor.execute(log_sql, (miner_db_id, timestamp, metric_key, metric_value))
-    
-    # 2. Update the main table with the latest key metrics for the dashboard.
-    update_sql = "UPDATE miners SET status = 'online', last_seen = ? WHERE id = ?;"
-    update_params = [timestamp, miner_db_id]
-    
-    if metric_key == 'Hash rate':
-        val_match = re.search(r'(\d+\.?\d*)', metric_value)
-        if val_match:
-            hash_rate = float(val_match.group(1))
-            update_sql = "UPDATE miners SET hash_rate = ?, status = 'online', last_seen = ? WHERE id = ?;"
-            update_params = [hash_rate, timestamp, miner_db_id]
-    elif metric_key == 'Temperature':
-        val_match = re.search(r'(\d+\.?\d*)', metric_value)
-        if val_match:
-            temperature = float(val_match.group(1))
-            update_sql = "UPDATE miners SET temperature = ?, status = 'online', last_seen = ? WHERE id = ?;"
-            update_params = [temperature, timestamp, miner_db_id]
-            
-    cursor.execute(update_sql, tuple(update_params))
-    # Note: The commit is handled in the database_writer loop.
+# --- Worker Threads ---
 
-def database_writer():
-    """
-    A dedicated thread that pulls data from the queue and writes it to the database.
-    This prevents 'database is locked' errors by serializing all writes.
-    """
-    print("[DB-Writer] Starting database writer thread.")
-    conn = get_db_connection()
-    
+def monitor_miner(tty_symlink, miner_info):
+    """A thread function that monitors a single miner's serial port."""
+    thread_name = threading.current_thread().name
+    miner_db_id = miner_info['db_id']
+    port = f'/dev/{tty_symlink}'
+    print(f"[{thread_name}] Starting monitoring for {tty_symlink} ({port})")
+
     while True:
         try:
-            # The get() method will block until an item is available in the queue.
-            miner_db_id, line = DATA_QUEUE.get()
+            ser = serial.Serial(port, 115200, timeout=5)
+            print(f"[{thread_name}] Successfully connected to {tty_symlink}.")
             
-            if line is None: # A signal to update the status of an offline miner
-                cursor = conn.cursor()
-                cursor.execute("UPDATE miners SET status = 'offline' WHERE id = ?;", (miner_db_id,))
-            else:
-                parse_and_store_data(miner_db_id, line, conn)
+            # Set status to online on successful connection
+            with get_db_connection() as conn:
+                conn.execute("UPDATE miners SET status = 'online', last_seen = CURRENT_TIMESTAMP WHERE id = ?;", (miner_db_id,))
+                conn.commit()
 
-            conn.commit() # Commit after each successful write.
-
-        except queue.Empty:
-            # This shouldn't happen with a blocking get(), but it's safe to handle.
-            time.sleep(0.1)
-        except Exception as e:
-            print(f"[DB-Writer] Error writing to database: {e}")
-
-
-def monitor_miner(tty_symlink, miner_db_id):
-    """
-    The main function for each miner thread. Opens a serial port, reads data,
-    and puts it into the DATA_QUEUE for the writer thread to process.
-    """
-    print(f"[Thread-{miner_db_id}] Starting monitoring for {tty_symlink} (/dev/{tty_symlink})")
-    
-    while True:
-        try:
-            ser = serial.Serial(f'/dev/{tty_symlink}', 115200, timeout=1)
-            print(f"[Thread-{miner_db_id}] Successfully connected to {tty_symlink}.")
-            
             while True:
-                try:
-                    line = ser.readline().decode('utf-8', errors='ignore').strip()
-                    if line:
-                        # Instead of writing to the DB, put the data in the queue.
-                        DATA_QUEUE.put((miner_db_id, line))
-                except serial.SerialException as e:
-                    print(f"[Thread-{miner_db_id}] Serial error on {tty_symlink}: {e}. Reconnecting...")
-                    break
-                except Exception as e:
-                    print(f"[Thread-{miner_db_id}] Error processing line from {tty_symlink}: {e}")
+                line = ser.readline().decode('utf-8', errors='ignore').strip()
+                if ">>>" in line:
+                    # Put the raw line and miner info into the queue for the DB writer
+                    data_queue.put((miner_db_id, line))
 
         except serial.SerialException as e:
-            print(f"[Thread-{miner_db_id}] Could not open port {tty_symlink}: {e}. Retrying in 10 seconds...")
-            # Put a special message in the queue to mark this miner as offline.
-            DATA_QUEUE.put((miner_db_id, None))
+            print(f"[{thread_name}] Could not open port {tty_symlink}: {e}. Retrying in 10 seconds...")
+            # Set status to offline on connection failure
+            with get_db_connection() as conn:
+                 conn.execute("UPDATE miners SET status = 'offline' WHERE id = ?;", (miner_db_id,))
+                 conn.commit()
             time.sleep(10)
         except Exception as e:
-            print(f"[Thread-{miner_db_id}] An unexpected error occurred for {tty_symlink}: {e}. Retrying in 10 seconds...")
+            print(f"[{thread_name}] An unexpected error occurred with {tty_symlink}: {e}. Reconnecting in 10 seconds...")
             time.sleep(10)
 
-def periodic_cleanup():
-    """
-    A dedicated thread that periodically cleans up old data from the miner_logs table.
-    """
-    print("[Cleaner] Starting periodic cleanup thread.")
+def database_writer():
+    """A thread function that writes data from the queue to the database."""
+    thread_name = threading.current_thread().name
+    print(f"[{thread_name}] Database writer thread started.")
+    
+    # Regex to parse the key-value pairs from the log lines
+    line_parser = re.compile(r'>>>\s*(.*?):\s*(.*)')
+
     while True:
-        # Wait for 10 minutes (600 seconds) before running the cleanup.
-        time.sleep(600)
+        try:
+            miner_db_id, line = data_queue.get()
+            
+            match = line_parser.search(line)
+            if match:
+                key, value = match.groups()
+                key = key.strip()
+                value = value.strip()
+
+                with get_db_connection() as conn:
+                    conn.execute(
+                        "INSERT INTO miner_logs (miner_id, log_key, log_value) VALUES (?, ?, ?);",
+                        (miner_db_id, key, value)
+                    )
+                    # Also update the 'last_seen' timestamp in the main miners table
+                    conn.execute(
+                        "UPDATE miners SET last_seen = CURRENT_TIMESTAMP WHERE id = ?;",
+                        (miner_db_id,)
+                    )
+                    conn.commit()
+            
+            data_queue.task_done()
+
+        except Exception as e:
+            print(f"[{thread_name}] Error processing line '{line}': {e}")
+
+
+def cleanup_logs():
+    """A thread function that periodically cleans old logs from the database."""
+    thread_name = threading.current_thread().name
+    print(f"[{thread_name}] Log cleanup thread started. Will run every {CLEANUP_INTERVAL_MINUTES} minutes.")
+    
+    while True:
+        time.sleep(CLEANUP_INTERVAL_MINUTES * 60)
         
         try:
-            print("[Cleaner] Running cleanup of old log data...")
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            # Calculate the timestamp for 10 minutes ago in ISO format.
-            ten_minutes_ago = (datetime.now() - timedelta(minutes=10)).isoformat()
-            
-            # Execute the delete operation.
-            cursor.execute("DELETE FROM miner_logs WHERE timestamp < ?", (ten_minutes_ago,))
-            conn.commit()
-            
-            deleted_rows = cursor.rowcount
-            print(f"[Cleaner] Cleanup complete. Removed {deleted_rows} old log entries.")
-            
-            conn.close()
+            with get_db_connection() as conn:
+                print(f"[{thread_name}] Running cleanup job...")
+                
+                # Calculate the cutoff time
+                cutoff_time = datetime.utcnow() - timedelta(minutes=LOG_RETENTION_MINUTES)
+                cutoff_iso = cutoff_time.strftime('%Y-%m-%d %H:%M:%S')
+
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM miner_logs WHERE created_at < ?;", (cutoff_iso,))
+                conn.commit()
+                
+                print(f"[{thread_name}] Deleted {cursor.rowcount} logs older than {cutoff_iso}.")
+
         except Exception as e:
-            print(f"[Cleaner] Error during cleanup: {e}")
+            print(f"[{thread_name}] Error during log cleanup: {e}")
 
-if __name__ == '__main__':
-    update_miner_cache()
-    
-    if not KNOWN_MINERS:
-        print("No miners found in the database. Please run the web app and upload a CSV first.")
-    else:
-        # Start the single database writer thread.
-        writer_thread = threading.Thread(target=database_writer)
-        writer_thread.daemon = True
-        writer_thread.start()
 
-        # Start the periodic cleanup thread.
-        cleanup_thread = threading.Thread(target=periodic_cleanup)
-        cleanup_thread.daemon = True
-        cleanup_thread.start()
+# --- Main Application Logic ---
 
-        threads = []
-        for tty, miner_id in KNOWN_MINERS.items():
-            thread = threading.Thread(target=monitor_miner, args=(tty, miner_id))
-            thread.daemon = True
-            threads.append(thread)
-            thread.start()
-        
-        # Keep the main thread alive to let the daemon threads run.
+if __name__ == "__main__":
+    print("Starting The Shepherd Data Ingestor...")
+
+    # Start the database writer thread
+    writer_thread = threading.Thread(target=database_writer, name="DB-Writer", daemon=True)
+    writer_thread.start()
+
+    # Start the log cleanup thread
+    cleanup_thread = threading.Thread(target=cleanup_logs, name="Log-Cleaner", daemon=True)
+    cleanup_thread.start()
+
+    # Main loop to start and monitor miner threads
+    with get_db_connection() as conn:
+        miners_to_monitor = get_configured_miners(conn)
+        print(f"Found {len(miners_to_monitor)} configured miners to monitor.")
+
+    for tty, info in miners_to_monitor.items():
+        thread = threading.Thread(target=monitor_miner, args=(tty, info), name=f"Miner-{info['miner_id']}", daemon=True)
+        thread.start()
+        time.sleep(0.1) # Stagger thread starts slightly
+
+    try:
         while True:
-            time.sleep(1)
+            time.sleep(60)
+            # The main thread can perform other periodic tasks here if needed
+            
+    except KeyboardInterrupt:
+        print("\nShutting down ingestor...")
 
