@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Summary Data - The Shepherd</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Refresh page data every 5 seconds
+        setInterval(() => {
+            fetch(window.location.href)
+                .then(response => response.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    document.getElementById('summary-table-body').innerHTML = doc.getElementById('summary-table-body').innerHTML;
+                })
+                .catch(err => console.error('Failed to refresh data:', err));
+        }, 5000);
+    </script>
+</head>
+<body class="bg-gray-900 text-gray-200 font-sans">
+    <div class="container mx-auto p-4 md:p-8">
+        
+        <header class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold text-cyan-400">Summarized Data View</h1>
+            <a href="/" class="text-gray-300 hover:text-cyan-400 transition-colors">&larr; Back to Dashboard</a>
+        </header>
+
+        <p class="text-gray-400 mb-4">Showing the current state from the summary table. Updates every 5 seconds.</p>
+
+        <div class="bg-gray-800 shadow-md rounded-lg overflow-x-auto">
+            <table class="min-w-full leading-normal">
+                <thead>
+                    <tr>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Miner ID</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Last Updated</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">KH/s</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Temp</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Valid Blocks</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Best Diff.</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Total MHashes</th>
+                    </tr>
+                </thead>
+                <tbody id="summary-table-body">
+                    {% for row in summary_data %}
+                    <tr class="hover:bg-gray-700">
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100 font-semibold">{{ row.miner_id }}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-400">{{ row.last_updated }}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">{{ row['KH/s'] }}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">{{ row['Temperature'] }}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">{{ row['Valid blocks'] }}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">{{ row['Best difficulty'] }}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">{{ row['Total MHashes'] }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center py-10 text-gray-500">No summary data found. Is the summarizer running?</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>
