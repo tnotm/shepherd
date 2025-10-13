@@ -1,51 +1,34 @@
-# This is a GitHub Actions workflow.
-# It will automatically deploy the code to your Raspberry Pi
-# every time you push a change to the 'main' branch.
+# This is the revised GitHub Actions workflow for a self-hosted runner.
+# It runs directly on the Raspberry Pi.
 
-name: Deploy to Raspberry Pi
+name: Deploy to Raspberry Pi (Self-Hosted)
 
 on:
-  # Triggers the workflow on push events but only for the "main" branch
   push:
     branches: [ "main" ]
 
 jobs:
   deploy:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-latest
+    # This is the key change: it tells GitHub to send this job
+    # to any of our runners that are labeled "self-hosted".
+    runs-on: self-hosted
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # 1. Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      # 1. Checks-out your repository under the runner's workspace.
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2. Syncs the files from the repo to your Pi using rsync over SSH
-      - name: Deploy files to Pi
-        uses: easingthemes/ssh-deploy@v4.1.10 # Using a well-maintained action
-        with:
-          # The private SSH key we stored in GitHub secrets
-          SSH_PRIVATE_KEY: ${{ secrets.PI_SSH_KEY }}
-          # The IP address of the Pi
-          REMOTE_HOST: ${{ secrets.PI_HOST_ZERO }}
-          # The username on the Pi
-          REMOTE_USER: ${{ secrets.PI_USER }}
-          # The source directory from the repo to copy
-          SOURCE: "./"
-          # The target directory on the Pi
-          TARGET: "/home/john/the_shepherd/shepherd"
-          # Using rsync arguments to make it efficient and clean
-          ARGS: "-rltgoDzvO --delete"
-
-      # 3. Executes commands on the Pi to restart the services
-      - name: Restart services on Pi
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.PI_HOST }}
-          username: ${{ secrets.PI_USER }}
-          key: ${{ secrets.PI_SSH_KEY }}
-          script: |
-            echo "Restarting Shepherd services..."
-            sudo systemctl restart shepherd-app.service
-            sudo systemctl restart shepherd-ingestor.service
-            echo "Services restarted successfully."
+      # 2. These commands are now run directly on the Pi by the runner.
+      #    We no longer need complex SSH actions.
+      - name: Deploy files and restart services
+        run: |
+          echo "Starting local deployment on Pi..."
+          # The source is the current directory where the code was checked out.
+          # The target is our application directory.
+          # Using rsync is still the best way to move the files efficiently.
+          rsync -rltgoDzvO --delete ./ /home/john/the_shepherd/shepherd/
+          
+          echo "Restarting Shepherd services..."
+          sudo systemctl restart shepherd-app.service
+          sudo systemctl restart shepherd-ingestor.service
+          echo "Deployment complete."
