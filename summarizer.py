@@ -69,7 +69,11 @@ def update_summary_stats(conn):
 
                     if current_mhashes > last_mhashes and time_delta >= MINIMUM_TIME_DELTA_SECONDS:
                         mhash_delta = current_mhashes - last_mhashes
-                        khs_float = (mhash_delta * 1000) / time_delta
+                        # --- MODIFIED: Removed incorrect "* 1000" multiplication ---
+                        # The log key says MHashes, but the value behaves like KHashes.
+                        # This brings the final calculation into the correct range.
+                        khs_float = mhash_delta / time_delta
+                        # -----------------------------------------------------------
                         khs = f"{khs_float:.2f}"
                 
                 # --- The Fix: A single, intelligent UPDATE statement ---
