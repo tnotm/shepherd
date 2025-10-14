@@ -32,4 +32,5 @@ jobs:
           sudo systemctl restart shepherd-app.service
           sudo systemctl restart shepherd-ingestor.service
           sudo systemctl restart shepherd-summarizer.service
+          sudo systemctl restart shepherd-pricer.service
           echo "Deployment complete."
