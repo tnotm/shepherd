@@ -67,8 +67,6 @@ def init_db():
 @app.route('/')
 def index():
     conn = get_db_connection()
-    # --- MODIFIED: Added m.status to the SELECT statement ---
-    # This ensures the status is always available, even if there's no summary data yet.
     miners_query = """
         SELECT 
             m.miner_id, m.nerdminer_vrs, m.status,
@@ -139,6 +137,50 @@ def summary():
     """).fetchall()
     conn.close()
     return render_template('summary.html', summary_data=summary_data)
+
+@app.route('/kiosk')
+def kiosk():
+    conn = get_db_connection()
+    miners_query = """
+        SELECT
+            m.miner_id, m.nerdminer_vrs, m.status,
+            s.* FROM miners m
+        LEFT JOIN miner_summary s ON m.id = s.miner_id
+        ORDER BY m.miner_id;
+    """
+    miners = conn.execute(miners_query).fetchall()
+
+    herd_stats = {
+        'total_miners': 0,
+        'online_miners': 0,
+        'total_hash_khs': 0.0,
+        'total_shares': 0,
+        'best_difficulty': 0.0,
+        'btc_price': '21,000.00' # Placeholder
+    }
+
+    if miners:
+        herd_stats['total_miners'] = len(miners)
+        for miner in miners:
+            if miner['status'] == 'online':
+                herd_stats['online_miners'] += 1
+            try:
+                herd_stats['total_hash_khs'] += float(miner['KH/s'] or 0.0)
+            except (ValueError, TypeError):
+                pass
+            try:
+                herd_stats['total_shares'] += int(miner['Shares'] or 0)
+            except (ValueError, TypeError):
+                pass
+            try:
+                current_diff = float(miner['Best difficulty'] or 0.0)
+                if current_diff > herd_stats['best_difficulty']:
+                    herd_stats['best_difficulty'] = current_diff
+            except (ValueError, TypeError):
+                pass
+
+    conn.close()
+    return render_template('kiosk.html', miners=miners, herd_stats=herd_stats)
 
 @app.route('/upload_miners', methods=['POST'])
 def upload_miners():
