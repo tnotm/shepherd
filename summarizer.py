@@ -23,8 +23,6 @@ def update_summary_stats(conn):
     """
     Calculates all summary stats and updates the miner_summary table in a robust way.
     """
-    # First, ensure a summary row exists for every single configured miner.
-    # This is a cheap and safe operation that prevents errors later.
     conn.execute("INSERT OR IGNORE INTO miner_summary (miner_id) SELECT id FROM miners;")
 
     miners_cursor = conn.execute("SELECT id as miner_id FROM miners;")
@@ -35,7 +33,6 @@ def update_summary_stats(conn):
     cutoff_iso = cutoff_time.isoformat()
 
     for miner_id in miner_ids:
-        # Get all the latest log values for this miner in a single query
         logs_cursor = conn.execute(f"""
             WITH RankedLogs AS (
                 SELECT log_key, log_value, created_at,
@@ -48,11 +45,9 @@ def update_summary_stats(conn):
         
         latest_logs = {row['log_key']: {'value': row['log_value'], 'timestamp': row['created_at']} for row in logs_cursor.fetchall()}
 
-        # Get the previous state for the hashrate calculation
         summary_cursor = conn.execute("SELECT last_mhashes_cumulative, last_mhashes_timestamp FROM miner_summary WHERE miner_id = ?;", (miner_id,))
         summary_state = summary_cursor.fetchone()
 
-        # --- Hashrate Calculation ---
         khs = None
         current_mhashes_data = latest_logs.get('Total MHashes')
 
@@ -69,16 +64,9 @@ def update_summary_stats(conn):
 
                     if current_mhashes > last_mhashes and time_delta >= MINIMUM_TIME_DELTA_SECONDS:
                         mhash_delta = current_mhashes - last_mhashes
-                        # --- MODIFIED: Adjusted the calculation multiplier. ---
-                        # Based on comparison with the pool's reported hashrate, the raw delta
-                        # needs to be multiplied by 100 to get the correct kH/s value.
                         khs_float = (mhash_delta * 100) / time_delta
-                        # -----------------------------------------------------------
                         khs = f"{khs_float:.2f}"
                 
-                # --- The Fix: A single, intelligent UPDATE statement ---
-                # It only updates KH/s if a new value was calculated.
-                # It always updates other stats if new values were found.
                 conn.execute("""
                     UPDATE miner_summary
                     SET
@@ -88,16 +76,20 @@ def update_summary_stats(conn):
                         "Valid blocks" = COALESCE(?, "Valid blocks"),
                         "Best difficulty" = COALESCE(?, "Best difficulty"),
                         "Total MHashes" = COALESCE(?, "Total MHashes"),
+                        "Submits" = COALESCE(?, "Submits"),
+                        "Shares" = COALESCE(?, "Shares"),
                         last_mhashes_cumulative = ?,
                         last_mhashes_timestamp = ?
                     WHERE miner_id = ?;
                 """, (
                     now_iso,
-                    khs, khs, # Used twice for the CASE WHEN statement
+                    khs, khs,
                     latest_logs.get('Temperature', {}).get('value'),
                     latest_logs.get('Valid blocks', {}).get('value'),
                     latest_logs.get('Best difficulty', {}).get('value'),
                     current_mhashes_data.get('value'),
+                    latest_logs.get('Submits', {}).get('value'),
+                    latest_logs.get('Shares', {}).get('value'),
                     current_mhashes,
                     current_timestamp_iso,
                     miner_id

@@ -3,6 +3,7 @@ import os
 import csv
 import io
 from flask import Flask, render_template, request, redirect, url_for, flash
+from datetime import datetime, UTC
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -12,7 +13,6 @@ DATA_DIR = os.path.expanduser('~/shepherd_data')
 DATABASE_FILE = os.path.join(DATA_DIR, 'shepherd.db')
 
 def get_db_connection():
-    """Establishes a connection to the SQLite database."""
     os.makedirs(DATA_DIR, exist_ok=True)
     conn = sqlite3.connect(DATABASE_FILE, timeout=10)
     conn.row_factory = sqlite3.Row
@@ -20,7 +20,6 @@ def get_db_connection():
     return conn
 
 def init_db():
-    """Initializes the database and creates/updates tables if they don't exist."""
     with get_db_connection() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS miners (
@@ -40,7 +39,7 @@ def init_db():
         conn.execute("""
             CREATE TABLE IF NOT EXISTS miner_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                miner_id INTEGER,
+                miner_id INTEGER NOT NULL,
                 log_key TEXT NOT NULL,
                 log_value TEXT,
                 created_at TEXT NOT NULL,
@@ -56,29 +55,62 @@ def init_db():
                 "Valid blocks" TEXT,
                 "Best difficulty" TEXT,
                 "Total MHashes" TEXT,
-                last_mhashes_cumulative REAL DEFAULT 0.0,
+                "Submits" TEXT,
+                "Shares" TEXT,
+                last_mhashes_cumulative REAL,
                 last_mhashes_timestamp TEXT,
                 FOREIGN KEY (miner_id) REFERENCES miners (id)
             );
         """)
         print("Database tables verified.")
 
-# --- Flask Routes ---
 @app.route('/')
 def index():
     conn = get_db_connection()
-    miners_data = conn.execute("""
+    miners_query = """
         SELECT 
-            m.miner_id, m.status, m.tty_symlink, m.nerdminer_vrs,
-            s.last_updated, s."KH/s", s."Temperature", s."Valid blocks", s."Best difficulty"
-        FROM miners m
+            m.miner_id, m.nerdminer_vrs,
+            s.* FROM miners m
         LEFT JOIN miner_summary s ON m.id = s.miner_id
         ORDER BY m.miner_id;
-    """).fetchall()
-    conn.close()
-    return render_template('index.html', miners=miners_data)
+    """
+    miners = conn.execute(miners_query).fetchall()
+    
+    # --- New Herd Stats Calculation ---
+    herd_stats = {
+        'total_miners': 0,
+        'online_miners': 0,
+        'total_hash_khs': 0.0,
+        'total_shares': 0,
+        'best_difficulty': 0.0,
+        'btc_price': '21,000.00' # Placeholder
+    }
+    
+    if miners:
+        herd_stats['total_miners'] = len(miners)
+        for miner in miners:
+            if miner['status'] == 'online':
+                herd_stats['online_miners'] += 1
+            try:
+                herd_stats['total_hash_khs'] += float(miner['KH/s'] or 0.0)
+            except (ValueError, TypeError):
+                pass 
+            try:
+                herd_stats['total_shares'] += int(miner['Shares'] or 0)
+            except (ValueError, TypeError):
+                pass
+            try:
+                current_diff = float(miner['Best difficulty'] or 0.0)
+                if current_diff > herd_stats['best_difficulty']:
+                    herd_stats['best_difficulty'] = current_diff
+            except (ValueError, TypeError):
+                pass
 
-@app.route('/config', methods=['GET'])
+    conn.close()
+    return render_template('index.html', miners=miners, herd_stats=herd_stats)
+
+
+@app.route('/config')
 def config():
     return render_template('config.html')
 
@@ -102,10 +134,10 @@ def summary():
         FROM miner_summary s
         JOIN miners m ON s.miner_id = m.id
         ORDER BY m.miner_id
+        LIMIT 30
     """).fetchall()
     conn.close()
     return render_template('summary.html', summary_data=summary_data)
-
 
 @app.route('/upload_miners', methods=['POST'])
 def upload_miners():
@@ -127,10 +159,8 @@ def upload_miners():
                 return redirect(url_for('config'))
 
             conn = get_db_connection()
-            cursor = conn.cursor()
-
             for miner in miners_to_upsert:
-                cursor.execute('''
+                conn.execute('''
                     INSERT INTO miners (miner_id, chipset, attrs_idVendor, attrs_idProduct, attrs_serial, tty_symlink, nerdminer_rom, nerdminer_vrs)
                     VALUES (:miner_id, :chipset, :attrs_idVendor, :attrs_idProduct, :attrs_serial, :tty_symlink, :nerdminer_rom, :nerdminer_vrs)
                     ON CONFLICT(miner_id) DO UPDATE SET
@@ -155,8 +185,7 @@ def upload_miners():
         flash('Invalid file type. Please upload a .csv file.', 'error')
         return redirect(url_for('config'))
 
-
 if __name__ == '__main__':
     init_db()
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', debug=True)
 
