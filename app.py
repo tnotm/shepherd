@@ -47,7 +47,7 @@ def init_db():
                 FOREIGN KEY (miner_id) REFERENCES miners (id)
             );
         """)
-        # --- MODIFIED: Added columns for hashrate state ---
+        # --- MODIFIED: Added the new columns needed for hashrate calculation ---
         conn.execute("""
             CREATE TABLE IF NOT EXISTS miner_summary (
                 miner_id INTEGER PRIMARY KEY,
@@ -62,17 +62,16 @@ def init_db():
                 FOREIGN KEY (miner_id) REFERENCES miners (id)
             );
         """)
-        # ---------------------------------------------------
+        # --------------------------------------------------------------------
         print("Database tables verified.")
 
 # --- Flask Routes ---
 @app.route('/')
 def index():
     conn = get_db_connection()
-    # Join miners with summary to get all data in one go
     miners_data = conn.execute("""
         SELECT 
-            m.miner_id, m.status, m.tty_symlink,
+            m.miner_id, m.status, m.tty_symlink, m.nerdminer_vrs,
             s.last_updated, s."KH/s", s."Temperature", s."Valid blocks", s."Best difficulty"
         FROM miners m
         LEFT JOIN miner_summary s ON m.id = s.miner_id
