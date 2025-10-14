@@ -67,16 +67,17 @@ def init_db():
 @app.route('/')
 def index():
     conn = get_db_connection()
+    # --- MODIFIED: Added m.status to the SELECT statement ---
+    # This ensures the status is always available, even if there's no summary data yet.
     miners_query = """
         SELECT 
-            m.miner_id, m.nerdminer_vrs,
+            m.miner_id, m.nerdminer_vrs, m.status,
             s.* FROM miners m
         LEFT JOIN miner_summary s ON m.id = s.miner_id
         ORDER BY m.miner_id;
     """
     miners = conn.execute(miners_query).fetchall()
     
-    # --- New Herd Stats Calculation ---
     herd_stats = {
         'total_miners': 0,
         'online_miners': 0,
