@@ -23,14 +23,13 @@ def get_db_connection():
 
 def update_hashrate_summary(conn):
     """
-    Calculates the instantaneous hashrate for each miner based on the delta
-    of 'Total MHashes' and time.
+    Calculates the instantaneous hashrate for each miner and UPDATES the
+    existing summary row.
     """
     miners_cursor = conn.execute("SELECT id FROM miners;")
     miner_ids = [row['id'] for row in miners_cursor.fetchall()]
 
     for miner_id in miner_ids:
-        # Get the single most recent 'Total MHashes' log entry for the miner
         latest_log_cursor = conn.execute("""
             SELECT log_value, created_at FROM miner_logs
             WHERE miner_id = ? AND log_key = 'Total MHashes'
@@ -39,15 +38,14 @@ def update_hashrate_summary(conn):
         latest_log = latest_log_cursor.fetchone()
 
         if not latest_log:
-            continue  # No hashrate data for this miner yet
+            continue
 
         try:
             current_mhashes = float(latest_log['log_value'])
             current_timestamp_dt = datetime.fromisoformat(latest_log['created_at'])
         except (ValueError, TypeError):
-            continue # Malformed data, skip
+            continue
 
-        # Get the previous state from our summary table
         summary_cursor = conn.execute("""
             SELECT last_mhashes_cumulative, last_mhashes_timestamp FROM miner_summary
             WHERE miner_id = ?;
@@ -63,22 +61,24 @@ def update_hashrate_summary(conn):
 
             if current_mhashes > last_mhashes and time_delta >= MINIMUM_TIME_DELTA_SECONDS:
                 mhash_delta = current_mhashes - last_mhashes
-                khs_float = (mhash_delta * 1000) / time_delta # Convert MHashes/s to KHashes/s
+                khs_float = (mhash_delta * 1000) / time_delta
                 khs = f"{khs_float:.2f}"
 
-        # UPSERT the new hashrate and state for the next calculation
+        # --- MODIFIED: Changed from a broad INSERT/UPSERT to a targeted UPDATE ---
+        # This prevents this function from wiping out the data from the other summary function.
         conn.execute("""
-            INSERT INTO miner_summary (miner_id, "KH/s", last_mhashes_cumulative, last_mhashes_timestamp)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(miner_id) DO UPDATE SET
-                "KH/s" = COALESCE(excluded."KH/s", "KH/s"),
-                last_mhashes_cumulative = excluded.last_mhashes_cumulative,
-                last_mhashes_timestamp = excluded.last_mhashes_timestamp;
-        """, (miner_id, khs, current_mhashes, latest_log['created_at']))
+            UPDATE miner_summary
+            SET "KH/s" = ?,
+                last_mhashes_cumulative = ?,
+                last_mhashes_timestamp = ?
+            WHERE miner_id = ?;
+        """, (khs, current_mhashes, latest_log['created_at'], miner_id))
+        # --------------------------------------------------------------------------
 
 def update_general_summary_stats(conn):
     """
     Efficiently updates the non-calculated stats like Temperature, Valid Blocks, etc.
+    This function will INSERT new rows if they don't exist.
     """
     keys_to_summarize = ('Temperature', 'Valid blocks', 'Best difficulty', 'Total MHashes')
     
@@ -122,9 +122,10 @@ if __name__ == "__main__":
         while True:
             try:
                 with get_db_connection() as conn:
-                    # Run both update tasks within a single transaction
                     with conn:
+                        # General stats run first to ensure the row exists
                         update_general_summary_stats(conn)
+                        # Hashrate summary now only UPDATES the existing row
                         update_hashrate_summary(conn)
                     print(f"[{datetime.now(UTC).isoformat()}] Summarization complete.")
             except Exception as e:
