@@ -69,10 +69,10 @@ def update_summary_stats(conn):
 
                     if current_mhashes > last_mhashes and time_delta >= MINIMUM_TIME_DELTA_SECONDS:
                         mhash_delta = current_mhashes - last_mhashes
-                        # --- MODIFIED: Removed incorrect "* 1000" multiplication ---
-                        # The log key says MHashes, but the value behaves like KHashes.
-                        # This brings the final calculation into the correct range.
-                        khs_float = mhash_delta / time_delta
+                        # --- MODIFIED: Adjusted the calculation multiplier. ---
+                        # Based on comparison with the pool's reported hashrate, the raw delta
+                        # needs to be multiplied by 100 to get the correct kH/s value.
+                        khs_float = (mhash_delta * 100) / time_delta
                         # -----------------------------------------------------------
                         khs = f"{khs_float:.2f}"
                 
