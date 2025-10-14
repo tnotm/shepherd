@@ -14,32 +14,34 @@
             <h1 class="text-3xl font-bold text-cyan-400">Configuration</h1>
             <a href="/" class="bg-gray-700 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded inline-flex items-center transition-colors duration-300">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1V11a1 1 0 00-1-1H5a1 1 0 00-1 1v5a1 1 0 001 1h3z" />
                 </svg>
-                <span>Main Dashboard</span>
+                <span>Dashboard</span>
             </a>
         </header>
 
         <!-- Flash Messages -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
+                <div class="mb-4">
                 {% for category, message in messages %}
-                    <div class="p-4 mb-4 text-sm rounded-lg 
-                        {% if category == 'success' %} bg-green-800 text-green-200 
-                        {% else %} bg-red-800 text-red-200 {% endif %}" role="alert">
-                        <span class="font-medium">{{ category|capitalize }}!</span> {{ message }}
+                    <div class="p-4 rounded-md {% if category == 'error' %} bg-red-800 text-red-100 {% else %} bg-green-800 text-green-100 {% endif %}">
+                        {{ message }}
                     </div>
                 {% endfor %}
+                </div>
             {% endif %}
         {% endwith %}
 
-        <!-- Upload Section -->
-        <div class="bg-gray-800 shadow-md rounded-lg p-6">
-            <h2 class="text-xl font-semibold mb-4 text-cyan-300">Upload Miner Configuration</h2>
+        <!-- Miner Fleet Upload -->
+        <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+            <h2 class="text-xl font-semibold mb-4 text-cyan-300">Update Miner Fleet</h2>
             <p class="text-gray-400 mb-4">
-                Upload a CSV file to add or update your miner fleet. The file should contain a header row and `miner_id` must be unique.
+                Upload a CSV file with your miner details. The file must contain the header row and a `miner_id` column.
+                Existing miners will be updated, and new miners will be added.
             </p>
-            <form action="/upload_csv" method="post" enctype="multipart/form-data">
+            <!-- MODIFIED: Changed form action to use url_for for better reliability -->
+            <form action="{{ url_for('upload_miners') }}" method="POST" enctype="multipart/form-data" class="w-full">
                 <div class="flex items-center justify-center w-full">
                     <label for="miner_file" class="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-600 border-dashed rounded-lg cursor-pointer bg-gray-700 hover:bg-gray-600">
                         <div class="flex flex-col items-center justify-center pt-5 pb-6">
@@ -47,17 +49,16 @@
                                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/>
                             </svg>
                             <p class="mb-2 text-sm text-gray-400"><span class="font-semibold">Click to upload</span> or drag and drop</p>
-                            <p class="text-xs text-gray-500">CSV file (e.g., miners_tbl.csv)</p>
+                            <p class="text-xs text-gray-500">CSV file only</p>
                         </div>
                         <input id="miner_file" name="miner_file" type="file" class="hidden" accept=".csv" />
                     </label>
-                </div>
-                <div class="mt-4 text-center">
-                     <button type="submit" class="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-6 rounded transition-colors duration-300">Upload File</button>
-                </div>
+                </div> 
+                <button type="submit" class="mt-4 w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded transition-colors">
+                    Upload Miner File
+                </button>
             </form>
         </div>
-
     </div>
 </body>
 </html>
