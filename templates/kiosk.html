@@ -6,115 +6,99 @@
     <title>The Shepherd Kiosk</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Hide scrollbars for a cleaner kiosk look */
         html, body {
-            overflow: hidden; /* Prevent bouncing */
             height: 100%;
-        }
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .no-scrollbar {
-            -ms-overflow-style: none;  /* IE and Edge */
-            scrollbar-width: none;  /* Firefox */
-        }
-        @layer components {
-            .stat-card {
-                @apply bg-gray-800 p-1 rounded-lg text-center;
-            }
-            .stat-label {
-                @apply text-[10px] text-cyan-400 uppercase font-bold tracking-wider;
-            }
-            .stat-value {
-                @apply text-lg font-semibold;
-            }
+            overflow: hidden;
         }
     </style>
+</head>
+<body class="bg-black text-gray-200 font-mono">
+
+    <div class="h-full flex flex-col">
+
+        <!-- BTC Price Section -->
+        <div id="btc-stats" class="flex-shrink-0 bg-yellow-400 text-black p-2">
+            <div class="grid grid-cols-2 gap-4 text-center">
+                <div>
+                    <p class="text-sm font-bold uppercase tracking-wider">BTC Price</p>
+                    <p class="text-3xl font-semibold">${{ herd_stats.btc_price }}</p>
+                </div>
+                <div>
+                    <p class="text-sm font-bold uppercase tracking-wider">% 24HR</p>
+                    <p class="text-3xl font-semibold text-green-700">{{ herd_stats.btc_change }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Clock Section -->
+        <div class="flex-grow bg-gray-800 text-white flex flex-col items-center justify-center">
+            <div id="clock-time" class="text-7xl md:text-8xl font-bold"></div>
+            <div id="clock-date" class="text-xl md:text-2xl text-gray-400"></div>
+        </div>
+
+        <!-- Herd Stats Section -->
+        <div id="herd-stats" class="flex-shrink-0 bg-black text-white p-2">
+            <div class="grid grid-cols-4 gap-2 text-center">
+                <div>
+                    <p class="text-xs text-cyan-400 uppercase font-bold">Miners</p>
+                    <p class="text-2xl font-semibold">{{ herd_stats.online_miners }}/{{ herd_stats.total_miners }}</p>
+                </div>
+                <div>
+                    <p class="text-xs text-cyan-400 uppercase font-bold">Herd KH/s</p>
+                    <p class="text-2xl font-semibold">{{ "%.2f"|format(herd_stats.total_hash_khs) }}</p>
+                </div>
+                <div>
+                    <p class="text-xs text-cyan-400 uppercase font-bold">Shares</p>
+                    <p class="text-2xl font-semibold">{{ herd_stats.total_shares }}</p>
+                </div>
+                <div>
+                    <p class="text-xs text-cyan-400 uppercase font-bold">Best Diff</p>
+                    <p class="text-2xl font-semibold">{{ "%.2f"|format(herd_stats.best_difficulty) }}</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
     <script>
-        // Auto-refresh logic
+        const timeElement = document.getElementById('clock-time');
+        const dateElement = document.getElementById('clock-date');
+
+        function updateClock() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+            const dateString = now.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            
+            timeElement.textContent = timeString;
+            dateElement.textContent = dateString;
+        }
+
+        // Update the clock every second
+        setInterval(updateClock, 1000);
+        // Initial call to display immediately
+        updateClock();
+
+        // Auto-refresh the data sections every 5 seconds
         setInterval(() => {
             fetch(window.location.href)
                 .then(response => response.text())
                 .then(html => {
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(html, 'text/html');
-                    const newContent = doc.getElementById('kiosk-content-inner');
-                    if (newContent) {
-                        document.getElementById('kiosk-content-inner').innerHTML = newContent.innerHTML;
+                    
+                    const newBtcStats = doc.getElementById('btc-stats');
+                    if (newBtcStats) {
+                        document.getElementById('btc-stats').innerHTML = newBtcStats.innerHTML;
+                    }
+
+                    const newHerdStats = doc.getElementById('herd-stats');
+                    if (newHerdStats) {
+                        document.getElementById('herd-stats').innerHTML = newHerdStats.innerHTML;
                     }
                 })
                 .catch(err => console.error('Failed to refresh data:', err));
-        }, 5000); // Refresh every 5 seconds
+        }, 5000);
     </script>
-</head>
-<body class="bg-black text-gray-200 font-sans">
-    <div id="kiosk-content" class="h-screen flex flex-col p-1">
-        <div id="kiosk-content-inner" class="h-full flex flex-col">
-            <!-- Header section - does not grow -->
-            <div class="flex-shrink-0">
-                <div class="grid grid-cols-2 gap-1 mb-1">
-                    <div class="stat-card">
-                        <p class="stat-label">Miners</p>
-                        <p class="stat-value">{{ herd_stats.online_miners }}/{{ herd_stats.total_miners }}</p>
-                    </div>
-                    <div class="stat-card">
-                        <p class="stat-label">Herd Hash</p>
-                        <p class="stat-value">{{ "%.2f"|format(herd_stats.total_hash_khs) }}</p>
-                    </div>
-                    <div class="stat-card">
-                        <p class="stat-label">Shares</p>
-                        <p class="stat-value">{{ herd_stats.total_shares }}</p>
-                    </div>
-                    <div class="stat-card">
-                        <p class="stat-label">Best Diff</p>
-                        <p class="stat-value">{{ "%.2f"|format(herd_stats.best_difficulty) }}</p>
-                    </div>
-                </div>
-                <div class="stat-card mb-1">
-                     <p class="stat-label">BTC Price</p>
-                     <p class="stat-value">${{ herd_stats.btc_price }}</p>
-                </div>
-            </div>
-
-            <!-- Miner List - grows and scrolls internally -->
-            <div id="miner-list" class="flex-grow overflow-y-auto space-y-1 no-scrollbar">
-                {% for miner in miners %}
-                <div class="bg-gray-800 rounded-lg p-2 flex flex-col text-xs">
-                    <div class="flex justify-between items-center">
-                        <div>
-                            <p class="text-gray-100 font-bold">{{ miner.miner_id }}</p>
-                            <p class="text-gray-500 text-[10px]">v{{ miner.nerdminer_vrs }}</p>
-                        </div>
-                         <span class="px-2 py-0.5 text-[10px] font-semibold leading-tight rounded-full 
-                            {% if miner.status == 'online' %} text-green-200 bg-green-700
-                            {% elif miner.status == 'offline' %} text-red-200 bg-red-700
-                            {% else %} text-yellow-200 bg-yellow-700 {% endif %}">
-                            {{ miner.status | capitalize }}
-                        </span>
-                    </div>
-                    <div class="grid grid-cols-3 gap-1 text-center mt-1">
-                        <div>
-                            <p class="text-gray-400 text-[10px]">KH/s</p>
-                            <p class="font-semibold text-cyan-300">{{ miner['KH/s'] or 'N/A' }}</p>
-                        </div>
-                        <div>
-                            <p class="text-gray-400 text-[10px]">Temp</p>
-                            <p class="font-semibold">{{ miner['Temperature'] or 'N/A' }}</p>
-                        </div>
-                        <div>
-                            <p class="text-gray-400 text-[10px]">Shares</p>
-                            <p class="font-semibold">{{ miner['Shares'] or 'N/A' }}</p>
-                        </div>
-                    </div>
-                </div>
-                {% else %}
-                <div class="text-center py-10 text-gray-500">
-                    <p>No miners configured.</p>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
 </body>
 </html>
 

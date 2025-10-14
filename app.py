@@ -82,7 +82,8 @@ def index():
         'total_hash_khs': 0.0,
         'total_shares': 0,
         'best_difficulty': 0.0,
-        'btc_price': '21,000.00' # Placeholder
+        'btc_price': '21,000.00',
+        'btc_change': '+2.5%'
     }
     
     if miners:
@@ -156,7 +157,8 @@ def kiosk():
         'total_hash_khs': 0.0,
         'total_shares': 0,
         'best_difficulty': 0.0,
-        'btc_price': '21,000.00' # Placeholder
+        'btc_price': '21,000.00',
+        'btc_change': '+2.5%' # Placeholder
     }
 
     if miners:
