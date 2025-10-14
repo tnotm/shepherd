@@ -47,7 +47,6 @@ def init_db():
                 FOREIGN KEY (miner_id) REFERENCES miners (id)
             );
         """)
-        # --- MODIFIED: Added the new columns needed for hashrate calculation ---
         conn.execute("""
             CREATE TABLE IF NOT EXISTS miner_summary (
                 miner_id INTEGER PRIMARY KEY,
@@ -62,7 +61,6 @@ def init_db():
                 FOREIGN KEY (miner_id) REFERENCES miners (id)
             );
         """)
-        # --------------------------------------------------------------------
         print("Database tables verified.")
 
 # --- Flask Routes ---
