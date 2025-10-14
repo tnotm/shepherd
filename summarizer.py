@@ -1,16 +1,16 @@
 import sqlite3
+import time
 import os
-import csv
-import io
-from flask import Flask, render_template, request, redirect, url_for, flash
-
-app = Flask(__name__)
-app.secret_key = os.urandom(24)
+from datetime import datetime, timedelta, UTC
 
 # --- Configuration ---
 DATA_DIR = os.path.expanduser('~/shepherd_data')
 DATABASE_FILE = os.path.join(DATA_DIR, 'shepherd.db')
+AGGREGATION_INTERVAL_SECONDS = 5
+DATA_WINDOW_MINUTES = 2
+MINIMUM_TIME_DELTA_SECONDS = 2.0 # Minimum time between hashrate calculations
 
+# --- Database Functions ---
 def get_db_connection():
     """Establishes a connection to the SQLite database."""
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -19,146 +19,97 @@ def get_db_connection():
     conn.execute('PRAGMA journal_mode=WAL;')
     return conn
 
-def init_db():
-    """Initializes the database and creates/updates tables if they don't exist."""
-    with get_db_connection() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS miners (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                miner_id TEXT UNIQUE NOT NULL,
-                chipset TEXT,
-                attrs_idVendor TEXT,
-                attrs_idProduct TEXT,
-                attrs_serial TEXT,
-                tty_symlink TEXT,
-                nerdminer_rom TEXT,
-                nerdminer_vrs TEXT,
-                status TEXT DEFAULT 'unknown',
-                last_seen TEXT
-            );
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS miner_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                miner_id INTEGER,
-                log_key TEXT NOT NULL,
-                log_value TEXT,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (miner_id) REFERENCES miners (id)
-            );
-        """)
-        # --- MODIFIED: Added the new columns needed for hashrate calculation ---
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS miner_summary (
-                miner_id INTEGER PRIMARY KEY,
-                last_updated TEXT,
-                "KH/s" TEXT,
-                "Temperature" TEXT,
-                "Valid blocks" TEXT,
-                "Best difficulty" TEXT,
-                "Total MHashes" TEXT,
-                last_mhashes_cumulative REAL DEFAULT 0.0,
-                last_mhashes_timestamp TEXT,
-                FOREIGN KEY (miner_id) REFERENCES miners (id)
-            );
-        """)
-        # --------------------------------------------------------------------
-        print("Database tables verified.")
-
-# --- Flask Routes ---
-@app.route('/')
-def index():
-    conn = get_db_connection()
-    miners_data = conn.execute("""
-        SELECT 
-            m.miner_id, m.status, m.tty_symlink, m.nerdminer_vrs,
-            s.last_updated, s."KH/s", s."Temperature", s."Valid blocks", s."Best difficulty"
+# --- Unified Summarization Logic ---
+def update_summary_data(conn):
+    """
+    A unified function to calculate hashrate and update all summary stats.
+    This eliminates race conditions between separate functions.
+    """
+    now_iso = datetime.now(UTC).isoformat()
+    cutoff_time = datetime.now(UTC) - timedelta(minutes=DATA_WINDOW_MINUTES)
+    cutoff_iso = cutoff_time.isoformat()
+    
+    # Step 1: Ensure rows exist and update general stats first.
+    keys_to_summarize = ('Temperature', 'Valid blocks', 'Best difficulty', 'Total MHashes')
+    pivot_cases = ",\n".join([f"MAX(CASE WHEN log_key = '{key}' THEN log_value END) AS \"{key}\"" for key in keys_to_summarize])
+    
+    upsert_sql = f"""
+        INSERT INTO miner_summary (miner_id, last_updated, "Temperature", "Valid blocks", "Best difficulty", "Total MHashes")
+        SELECT
+            m.id AS miner_id,
+            ? AS last_updated,
+            {pivot_cases}
         FROM miners m
-        LEFT JOIN miner_summary s ON m.id = s.miner_id
-        ORDER BY m.miner_id;
-    """).fetchall()
-    conn.close()
-    return render_template('index.html', miners=miners_data)
+        JOIN miner_logs ml ON m.id = ml.miner_id
+        WHERE ml.log_key IN (?{',?' * (len(keys_to_summarize) - 1)}) 
+          AND ml.created_at >= ?
+        GROUP BY m.id
+        ON CONFLICT(miner_id) DO UPDATE SET
+            last_updated = excluded.last_updated,
+            "Temperature" = COALESCE(excluded."Temperature", "Temperature"),
+            "Valid blocks" = COALESCE(excluded."Valid blocks", "Valid blocks"),
+            "Best difficulty" = COALESCE(excluded."Best difficulty", "Best difficulty"),
+            "Total MHashes" = COALESCE(excluded."Total MHashes", "Total MHashes");
+    """
+    params = (now_iso,) + keys_to_summarize + (cutoff_iso,)
+    conn.execute(upsert_sql, params)
 
-@app.route('/config', methods=['GET'])
-def config():
-    return render_template('config.html')
+    # Step 2: Now that rows are guaranteed to exist, calculate and update hashrate.
+    miners_cursor = conn.execute("SELECT id FROM miners;")
+    miner_ids = [row['id'] for row in miners_cursor.fetchall()]
 
-@app.route('/raw_logs')
-def raw_logs():
-    conn = get_db_connection()
-    logs = conn.execute("""
-        SELECT l.created_at, m.miner_id, l.log_key, l.log_value 
-        FROM miner_logs l
-        JOIN miners m ON l.miner_id = m.id
-        ORDER BY l.id DESC LIMIT 30
-    """).fetchall()
-    conn.close()
-    return render_template('raw_logs.html', logs=logs)
+    for miner_id in miner_ids:
+        latest_log_cursor = conn.execute("""
+            SELECT log_value, created_at FROM miner_logs
+            WHERE miner_id = ? AND log_key = 'Total MHashes'
+            ORDER BY created_at DESC LIMIT 1;
+        """, (miner_id,))
+        latest_log = latest_log_cursor.fetchone()
 
-@app.route('/summary')
-def summary():
-    conn = get_db_connection()
-    summary_data = conn.execute("""
-        SELECT m.miner_id, s.*
-        FROM miner_summary s
-        JOIN miners m ON s.miner_id = m.id
-        ORDER BY m.miner_id
-    """).fetchall()
-    conn.close()
-    return render_template('summary.html', summary_data=summary_data)
+        if not latest_log:
+            continue
 
-
-@app.route('/upload_miners', methods=['POST'])
-def upload_miners():
-    if 'miner_file' not in request.files:
-        flash('No file part', 'error')
-        return redirect(url_for('config'))
-    file = request.files['miner_file']
-    if file.filename == '':
-        flash('No selected file', 'error')
-        return redirect(url_for('config'))
-    if file and file.filename.endswith('.csv'):
         try:
-            stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
-            csv_reader = csv.DictReader(stream)
-            miners_to_upsert = [row for row in csv_reader]
+            current_mhashes = float(latest_log['log_value'])
+            current_timestamp_dt = datetime.fromisoformat(latest_log['created_at'])
+        except (ValueError, TypeError):
+            continue
+
+        summary_cursor = conn.execute("SELECT last_mhashes_cumulative, last_mhashes_timestamp FROM miner_summary WHERE miner_id = ?;", (miner_id,))
+        summary_state = summary_cursor.fetchone()
+
+        khs = None
+        if summary_state and summary_state['last_mhashes_cumulative'] is not None and summary_state['last_mhashes_timestamp'] is not None:
+            last_mhashes = summary_state['last_mhashes_cumulative']
+            last_timestamp_dt = datetime.fromisoformat(summary_state['last_mhashes_timestamp'])
+            time_delta = (current_timestamp_dt - last_timestamp_dt).total_seconds()
+
+            if current_mhashes > last_mhashes and time_delta >= MINIMUM_TIME_DELTA_SECONDS:
+                mhash_delta = current_mhashes - last_mhashes
+                khs_float = (mhash_delta * 1000) / time_delta
+                khs = f"{khs_float:.2f}"
+
+        conn.execute("""
+            UPDATE miner_summary
+            SET "KH/s" = ?,
+                last_mhashes_cumulative = ?,
+                last_mhashes_timestamp = ?
+            WHERE miner_id = ?;
+        """, (khs, current_mhashes, latest_log['created_at'], miner_id))
+
+if __name__ == "__main__":
+    print("Starting The Shepherd Data Summarizer...")
+    try:
+        while True:
+            try:
+                with get_db_connection() as conn:
+                    with conn:
+                        update_summary_data(conn)
+                    print(f"[{datetime.now(UTC).isoformat()}] Summarization complete.")
+            except Exception as e:
+                print(f"An error occurred during summarization: {e}")
             
-            if not miners_to_upsert:
-                flash('CSV file is empty or malformed.', 'error')
-                return redirect(url_for('config'))
-
-            conn = get_db_connection()
-            cursor = conn.cursor()
-
-            for miner in miners_to_upsert:
-                cursor.execute('''
-                    INSERT INTO miners (miner_id, chipset, attrs_idVendor, attrs_idProduct, attrs_serial, tty_symlink, nerdminer_rom, nerdminer_vrs)
-                    VALUES (:miner_id, :chipset, :attrs_idVendor, :attrs_idProduct, :attrs_serial, :tty_symlink, :nerdminer_rom, :nerdminer_vrs)
-                    ON CONFLICT(miner_id) DO UPDATE SET
-                        chipset=excluded.chipset,
-                        attrs_idVendor=excluded.attrs_idVendor,
-                        attrs_idProduct=excluded.attrs_idProduct,
-                        attrs_serial=excluded.attrs_serial,
-                        tty_symlink=excluded.tty_symlink,
-                        nerdminer_rom=excluded.nerdminer_rom,
-                        nerdminer_vrs=excluded.nerdminer_vrs;
-                ''', miner)
-            
-            conn.commit()
-            conn.close()
-            flash(f'Successfully uploaded and processed {len(miners_to_upsert)} miners.', 'success')
-
-        except Exception as e:
-            flash(f'An error occurred: {e}', 'error')
-
-        return redirect(url_for('config'))
-    else:
-        flash('Invalid file type. Please upload a .csv file.', 'error')
-        return redirect(url_for('config'))
-
-
-if __name__ == '__main__':
-    init_db()
-    app.run(host='0.0.0.0', port=5000, debug=True)
+            time.sleep(AGGREGATION_INTERVAL_SECONDS)
+    except KeyboardInterrupt:
+        print("\nShutting down summarizer...")
 
