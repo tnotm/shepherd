@@ -29,8 +29,9 @@ jobs:
           rsync -rltgoDzvO --delete ./ /home/john/the_shepherd/shepherd/
           
           echo "Restarting Shepherd services..."
-          sudo systemctl restart shepherd-app.service
-          sudo systemctl restart shepherd-ingestor.service
-          sudo systemctl restart shepherd-summarizer.service
-          sudo systemctl restart shepherd-pricer.service
+          # sudo systemctl restart shepherd-app.service
+          # sudo systemctl restart shepherd-app.service
+          # sudo systemctl restart shepherd-ingestor.service
+          # sudo systemctl restart shepherd-summarizer.service
+          # sudo systemctl restart shepherd-pricer.service
           echo "Deployment complete."
