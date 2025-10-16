@@ -1,0 +1,16 @@
+# Python bytecode
+pycache/
+*.pyc
+
+# Python virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# IDE/Editor specific files
+.vscode/
+.idea/
+
+# Application-specific data files that should not be in version control
+/shepherd_data/

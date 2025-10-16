@@ -49,18 +49,33 @@ def init_db():
         conn.execute("""
             CREATE TABLE IF NOT EXISTS miner_summary (
                 miner_id INTEGER PRIMARY KEY,
-                last_updated TEXT,
-                "KH/s" TEXT,
-                "Temperature" TEXT,
-                "Valid blocks" TEXT,
-                "Best difficulty" TEXT,
-                "Total MHashes" TEXT,
-                "Submits" TEXT,
-                "Shares" TEXT,
-                "Time mining" TEXT,
-                last_mhashes_cumulative REAL,
-                last_mhashes_timestamp TEXT,
+                last_updated TEXT, "KH/s" TEXT, "Temperature" TEXT,
+                "Valid blocks" TEXT, "Best difficulty" TEXT, "Total MHashes" TEXT,
+                "Submits" TEXT, "Shares" TEXT, "Time mining" TEXT,
+                last_mhashes_cumulative REAL, last_mhashes_timestamp TEXT,
                 FOREIGN KEY (miner_id) REFERENCES miners (id) ON DELETE CASCADE
             );
         """)
+        # --- NEW: Pools Table ---
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS pools (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pool_name TEXT NOT NULL UNIQUE,
+                pool_url TEXT NOT NULL,
+                pool_port INTEGER NOT NULL,
+                pool_user TEXT NOT NULL,
+                pool_pass TEXT DEFAULT 'x',
+                is_active INTEGER DEFAULT 0
+            );
+        """)
+        # --- NEW: Coin Addresses Table ---
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS coin_addresses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                coin_ticker TEXT NOT NULL,
+                address TEXT NOT NULL UNIQUE,
+                label TEXT
+            );
+        """)
         print("Database tables verified.")
+
