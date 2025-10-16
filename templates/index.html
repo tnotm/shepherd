@@ -12,8 +12,10 @@
                 .then(html => {
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(html, 'text/html');
-                    document.getElementById('miner-table-body').innerHTML = doc.getElementById('miner-table-body').innerHTML;
-                    document.getElementById('herd-stats-container').innerHTML = doc.getElementById('herd-stats-container').innerHTML;
+                    const newHeader = doc.getElementById('herd-stats-header');
+                    const newBody = doc.getElementById('miner-table-body');
+                    if (newHeader) document.getElementById('herd-stats-header').innerHTML = newHeader.innerHTML;
+                    if (newBody) document.getElementById('miner-table-body').innerHTML = newBody.innerHTML;
                 })
                 .catch(err => console.error('Failed to refresh data:', err));
         }, 5000);
@@ -21,83 +23,75 @@
 </head>
 <body class="bg-gray-900 text-gray-200 font-sans">
     <div class="container mx-auto p-4 md:p-8">
-        
-        <header class="flex flex-wrap justify-between items-center mb-6 gap-4">
+        <header class="flex justify-between items-center mb-6">
             <h1 class="text-3xl font-bold text-cyan-400">The Shepherd Dashboard</h1>
             <nav class="flex items-center space-x-4">
-                <a href="/raw_logs" class="text-gray-300 hover:text-cyan-400 transition-colors">Raw Logs</a>
-                <a href="/summary" class="text-gray-300 hover:text-cyan-400 transition-colors">Summary</a>
-                <a href="/config" class="text-gray-300 hover:text-cyan-400 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                </a>
+                <a href="{{ url_for('main.raw_logs') }}" class="text-gray-300 hover:text-cyan-400">Raw Logs</a>
+                <a href="{{ url_for('main.summary') }}" class="text-gray-300 hover:text-cyan-400">Summary</a>
+                <a href="{{ url_for('main.kiosk') }}" class="text-gray-300 hover:text-cyan-400">Kiosk</a>
+                <a href="{{ url_for('main.config') }}" class="bg-gray-700 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded">Config</a>
             </nav>
         </header>
-
-        <!-- Herd Stats Header -->
-        <div id="herd-stats-container" class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+        
+        <div id="herd-stats-header" class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
             <div class="bg-gray-800 p-4 rounded-lg text-center">
                 <p class="text-sm text-cyan-400 uppercase font-bold">Miners</p>
-                <p class="text-2xl font-semibold">{{ herd_stats.online_miners }} / {{ herd_stats.total_miners }}</p>
+                <p class="text-2xl font-semibold">{{ herd_stats.online_miners }}/{{ herd_stats.total_miners }}</p>
             </div>
             <div class="bg-gray-800 p-4 rounded-lg text-center">
                 <p class="text-sm text-cyan-400 uppercase font-bold">Herd Hash</p>
-                <p class="text-2xl font-semibold">{{ "%.2f"|format(herd_stats.total_hash_khs) }} <span class="text-base">KH/s</span></p>
+                <p class="text-2xl font-semibold">{{ "%.2f"|format(herd_stats.total_hash_khs) }}</p>
             </div>
             <div class="bg-gray-800 p-4 rounded-lg text-center">
                 <p class="text-sm text-cyan-400 uppercase font-bold">Shares</p>
                 <p class="text-2xl font-semibold">{{ herd_stats.total_shares }}</p>
             </div>
             <div class="bg-gray-800 p-4 rounded-lg text-center">
-                <p class="text-sm text-cyan-400 uppercase font-bold">Best Difficulty</p>
-                <p class="text-2xl font-semibold">{{ "%.4f"|format(herd_stats.best_difficulty) }}</p>
+                <p class="text-sm text-cyan-400 uppercase font-bold">Best Diff</p>
+                <p class="text-2xl font-semibold">{{ "%.2f"|format(herd_stats.best_difficulty) }}</p>
             </div>
-            <div class="bg-gray-800 p-4 rounded-lg text-center">
-                <p class="text-sm text-cyan-400 uppercase font-bold">BTC Price</p>
-                <p class="text-2xl font-semibold">${{ herd_stats.btc_price }}</p>
+            <div class="p-4 rounded-lg text-center {% if herd_stats.btc_price_data.change_24h >= 0 %}bg-green-800{% else %}bg-red-800{% endif %}">
+                <p class="text-sm text-gray-200 uppercase font-bold">BTC Price</p>
+                <p class="text-2xl font-semibold">${{ "%.2f"|format(herd_stats.btc_price_data.price_usd) if herd_stats.btc_price_data.price_usd != 'N/A' else 'N/A' }}</p>
             </div>
         </div>
 
-        <!-- Miner Table -->
-        <div class="bg-gray-800 shadow-md rounded-lg overflow-hidden">
+        <div class="overflow-x-auto bg-gray-800 rounded-lg">
             <table class="min-w-full leading-normal">
                 <thead>
                     <tr>
-                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Miner</th>
-                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Status</th>
-                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">KH/s</th>
-                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Temp</th>
-                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Shares</th>
-                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Difficulty</th>
-                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Last Seen</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase">Miner</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase">Status</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase">KH/s</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase">Temp</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase">Shares</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase">Best Diff</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase">Last Seen</th>
                     </tr>
                 </thead>
                 <tbody id="miner-table-body">
                     {% for miner in miners %}
                     <tr class="hover:bg-gray-700">
                         <td class="px-5 py-4 border-b border-gray-700 text-sm">
-                            <p class="text-gray-100 font-semibold whitespace-no-wrap">{{ miner.miner_id }}</p>
-                            <p class="text-gray-400 text-xs whitespace-no-wrap">v{{ miner.nerdminer_vrs }}</p>
+                            <p class="text-gray-100 font-semibold">{{ miner.miner_id }}</p>
+                            <p class="text-gray-500 text-xs">v{{ miner.nerdminer_vrs }}</p>
                         </td>
                         <td class="px-5 py-4 border-b border-gray-700 text-sm">
-                            <span class="relative inline-block px-3 py-1 font-semibold leading-tight {% if miner.status == 'online' %} text-green-300 bg-green-800 rounded-full
-                                {% elif miner.status == 'offline' %} text-red-300 bg-red-800 rounded-full
-                                {% else %} text-yellow-300 bg-yellow-800 rounded-full {% endif %}">
-                                <span class="relative">{{ miner.status | capitalize }}</span>
+                            <span class="px-2 py-1 font-semibold leading-tight rounded-full 
+                                {% if miner.status == 'online' %} text-green-200 bg-green-700
+                                {% elif miner.status == 'offline' %} text-red-200 bg-red-700
+                                {% else %} text-yellow-200 bg-yellow-700 {% endif %}">
+                                {{ miner.status | capitalize }}
                             </span>
                         </td>
-                        <td class="px-5 py-4 border-b border-gray-700 text-sm"><p class="text-cyan-300 font-bold whitespace-no-wrap">{{ miner['KH/s'] or 'N/A' }}</p></td>
-                        <td class="px-5 py-4 border-b border-gray-700 text-sm"><p class="text-gray-100 whitespace-no-wrap">{{ miner['Temperature'] or 'N/A' }}</p></td>
-                        <td class="px-5 py-4 border-b border-gray-700 text-sm"><p class="text-gray-100 whitespace-no-wrap">{{ miner['Shares'] or 'N/A' }}</p></td>
-                        <td class="px-5 py-4 border-b border-gray-700 text-sm"><p class="text-gray-100 whitespace-no-wrap">{{ miner['Best difficulty'] or 'N/A' }}</p></td>
-                        <td class="px-5 py-4 border-b border-gray-700 text-sm"><p class="text-gray-400 whitespace-no-wrap text-xs">{{ miner.last_updated or 'Never' }}</p></td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm font-bold text-cyan-300">{{ miner['KH/s'] or 'N/A' }}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm">{{ miner['Temperature'] or 'N/A' }}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm">{{ miner['Shares'] or 'N/A' }}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm">{{ miner['Best difficulty'] or 'N/A' }}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-400">{{ miner.last_updated or 'Never' }}</td>
                     </tr>
                     {% else %}
-                    <tr>
-                        <td colspan="7" class="text-center py-10 text-gray-500">No miners configured. Please upload a CSV on the configuration page.</td>
-                    </tr>
+                    <tr><td colspan="7" class="text-center py-10 text-gray-500">No miners configured.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
