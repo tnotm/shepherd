@@ -11,6 +11,7 @@ jobs:
   deploy:
     # This is the key change: it tells GitHub to send this job
     # to any of our runners that are labeled "self-hosted".
+    # Added runner for pi3b
     runs-on: self-hosted
 
     steps:
