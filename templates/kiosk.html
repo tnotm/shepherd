@@ -10,14 +10,23 @@
             height: 100%;
             overflow: hidden;
         }
+        /* Custom font sizes for clock elements */
+        .clock-time {
+            font-size: 6rem; /* Equivalent to text-8xl */
+            line-height: 1; /* Adjust line height to reduce vertical space */
+        }
+        .clock-ampm {
+            font-size: 3rem; /* Smaller size for AM/PM */
+            line-height: 1; /* Adjust line height */
+            margin-top: -0.5rem; /* Pull AM/PM closer to time */
+        }
     </style>
 </head>
-<body class="bg-black text-gray-200 font-mono">
+<body class="bg-black text-gray-200 font-mono" onclick="toggleMenu(event)">
 
     <div class="h-full flex flex-col">
 
-        <!-- BTC Price Section -->
-        <div id="btc-stats" class="flex-shrink-0 bg-yellow-400 text-black p-2">
+        <!-- BTC Price Section --><div id="btc-stats" class="flex-shrink-0 bg-yellow-400 text-black p-2">
             <div class="grid grid-cols-2 gap-4 text-center">
                 <div>
                     <p class="text-sm font-bold uppercase tracking-wider">BTC Price</p>
@@ -25,79 +34,99 @@
                 </div>
                 <div>
                     <p class="text-sm font-bold uppercase tracking-wider">% 24HR</p>
-                    <p class="text-3xl font-semibold text-green-700">{{ herd_stats.btc_change }}</p>
+                    <p class="text-3xl font-semibold {% if herd_stats.btc_change >= 0 %} text-green-700 {% else %} text-red-700 {% endif %}">{{ "%.2f"|format(herd_stats.btc_change) }}%</p>
                 </div>
             </div>
         </div>
 
-        <!-- Clock Section -->
-        <div class="flex-grow bg-gray-800 text-white flex flex-col items-center justify-center">
-            <div id="clock-time" class="text-7xl md:text-8xl font-bold"></div>
-            <div id="clock-date" class="text-xl md:text-2xl text-gray-400"></div>
+        <!-- Clock Section --><div class="flex-grow bg-gray-800 text-white flex flex-col items-center justify-center">
+            <div id="clock-container" class="text-center flex flex-col items-center">
+                <h1 id="clock-time" class="font-bold font-sans clock-time"></h1>
+                <p id="clock-ampm" class="font-bold font-sans clock-ampm"></p>
+                <p id="clock-date" class="text-2xl mt-4"></p>
+            </div>
         </div>
 
-        <!-- Herd Stats Section -->
-        <div id="herd-stats" class="flex-shrink-0 bg-black text-white p-2">
-            <div class="grid grid-cols-4 gap-2 text-center">
+        <!-- Herd Stats Section --><div id="herd-stats" class="flex-shrink-0 bg-black p-2">
+            <div class="grid grid-cols-4 gap-4 text-center">
                 <div>
-                    <p class="text-xs text-cyan-400 uppercase font-bold">Miners</p>
+                    <p class="text-xs font-bold uppercase text-cyan-400">Miners</p>
                     <p class="text-2xl font-semibold">{{ herd_stats.online_miners }}/{{ herd_stats.total_miners }}</p>
                 </div>
                 <div>
-                    <p class="text-xs text-cyan-400 uppercase font-bold">Herd KH/s</p>
+                    <p class="text-xs font-bold uppercase text-cyan-400">Herd Hash</p>
                     <p class="text-2xl font-semibold">{{ "%.2f"|format(herd_stats.total_hash_khs) }}</p>
                 </div>
                 <div>
-                    <p class="text-xs text-cyan-400 uppercase font-bold">Shares</p>
+                    <p class="text-xs font-bold uppercase text-cyan-400">Shares</p>
                     <p class="text-2xl font-semibold">{{ herd_stats.total_shares }}</p>
                 </div>
                 <div>
-                    <p class="text-xs text-cyan-400 uppercase font-bold">Best Diff</p>
-                    <p class="text-2xl font-semibold">{{ "%.2f"|format(herd_stats.best_difficulty) }}</p>
+                    <p class="text-xs font-bold uppercase text-cyan-400">Templates</p>
+                    <p class="text-2xl font-semibold">{{ herd_stats.total_block_templates }}</p>
                 </div>
             </div>
         </div>
-
     </div>
 
-    <script>
-        const timeElement = document.getElementById('clock-time');
-        const dateElement = document.getElementById('clock-date');
+    {% include '_navigation_menu.html' %}
 
+    <script>
         function updateClock() {
+            const timeElement = document.getElementById('clock-time');
+            const ampmElement = document.getElementById('clock-ampm');
+            const dateElement = document.getElementById('clock-date');
+            if (!timeElement || !ampmElement || !dateElement) return;
+
             const now = new Date();
-            const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+            
+            let hours = now.getHours();
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            const seconds = now.getSeconds().toString().padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12; 
+            
+            timeElement.textContent = `${hours}:${minutes}:${seconds}`;
+            ampmElement.textContent = ampm;
+
             const dateString = now.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
             
-            timeElement.textContent = timeString;
             dateElement.textContent = dateString;
         }
 
-        // Update the clock every second
         setInterval(updateClock, 1000);
-        // Initial call to display immediately
         updateClock();
 
-        // Auto-refresh the data sections every 5 seconds
         setInterval(() => {
+            if (document.getElementById('nav-menu') && !document.getElementById('nav-menu').classList.contains('hidden')) {
+                return;
+            }
             fetch(window.location.href)
                 .then(response => response.text())
                 .then(html => {
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(html, 'text/html');
                     
-                    const newBtcStats = doc.getElementById('btc-stats');
-                    if (newBtcStats) {
-                        document.getElementById('btc-stats').innerHTML = newBtcStats.innerHTML;
-                    }
-
-                    const newHerdStats = doc.getElementById('herd-stats');
-                    if (newHerdStats) {
-                        document.getElementById('herd-stats').innerHTML = newHerdStats.innerHTML;
-                    }
+                    ['btc-stats', 'herd-stats'].forEach(id => {
+                        const newEl = doc.getElementById(id);
+                        if (newEl) document.getElementById(id).innerHTML = newEl.innerHTML;
+                    });
                 })
                 .catch(err => console.error('Failed to refresh data:', err));
         }, 5000);
+        
+        function toggleMenu(event) {
+            if (event && event.target.closest('a')) {
+                return;
+            }
+            const navMenu = document.getElementById('nav-menu');
+            const navPanel = document.getElementById('nav-menu-panel');
+            if(navMenu && navPanel) {
+                navMenu.classList.toggle('hidden');
+                navPanel.classList.toggle('-translate-x-full');
+            }
+        }
     </script>
 </body>
 </html>

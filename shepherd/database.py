@@ -45,18 +45,19 @@ def init_db():
                 FOREIGN KEY (miner_id) REFERENCES miners (id) ON DELETE CASCADE
             );
         """)
-        # Summary Table
+        # Summary Table - MODIFIED
         conn.execute("""
             CREATE TABLE IF NOT EXISTS miner_summary (
                 miner_id INTEGER PRIMARY KEY,
                 last_updated TEXT, "KH/s" TEXT, "Temperature" TEXT,
                 "Valid blocks" TEXT, "Best difficulty" TEXT, "Total MHashes" TEXT,
                 "Submits" TEXT, "Shares" TEXT, "Time mining" TEXT,
+                "Block templates" TEXT, -- ADDED
                 last_mhashes_cumulative REAL, last_mhashes_timestamp TEXT,
                 FOREIGN KEY (miner_id) REFERENCES miners (id) ON DELETE CASCADE
             );
         """)
-        # --- NEW: Pools Table ---
+        # Pools Table
         conn.execute("""
             CREATE TABLE IF NOT EXISTS pools (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,7 +69,7 @@ def init_db():
                 is_active INTEGER DEFAULT 0
             );
         """)
-        # --- NEW: Coin Addresses Table ---
+        # Coin Addresses Table
         conn.execute("""
             CREATE TABLE IF NOT EXISTS coin_addresses (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,4 +79,3 @@ def init_db():
             );
         """)
         print("Database tables verified.")
-

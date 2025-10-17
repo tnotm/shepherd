@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Farm Overview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html, body { overflow: hidden; }
+    </style>
+</head>
+<body class="bg-black text-gray-200 font-sans h-full" onclick="toggleMenu(event)">
+    <div class="h-full flex flex-col p-2 space-y-2">
+
+        <!-- Clock & Date -->
+        <div class="flex-shrink-0 text-center bg-gray-800 p-2 rounded-lg">
+            <h1 id="clock-time" class="text-4xl font-bold"></h1>
+            <p id="clock-date" class="text-sm text-cyan-400"></p>
+        </div>
+
+        <!-- BTC Price -->
+        <div id="btc-stats" class="flex-shrink-0 bg-yellow-400 text-black p-2 rounded-lg grid grid-cols-2 gap-2 text-center">
+            <div>
+                <p class="text-xs font-bold uppercase">BTC Price</p>
+                <p class="text-xl font-semibold">${{ herd_stats.btc_price }}</p>
+            </div>
+            <div>
+                <p class="text-xs font-bold uppercase">% 24HR</p>
+                <p class="text-xl font-semibold {% if herd_stats.btc_change >= 0 %} text-green-800 {% else %} text-red-800 {% endif %}">
+                    {{ "%.2f"|format(herd_stats.btc_change) }}%
+                </p>
+            </div>
+        </div>
+
+        <!-- Herd Stats -->
+        <div id="herd-stats" class="flex-grow bg-gray-800 p-2 rounded-lg grid grid-cols-2 grid-rows-2 gap-2 text-center">
+            <div class="bg-black p-2 rounded-md flex flex-col justify-center">
+                <p class="text-xs text-cyan-400 uppercase font-bold">Total Hash</p>
+                <p class="text-2xl font-semibold">{{ "%.2f"|format(herd_stats.total_hash_khs) }} <span class="text-lg">Kh/s</span></p>
+            </div>
+            <div class="bg-black p-2 rounded-md flex flex-col justify-center">
+                <p class="text-xs text-cyan-400 uppercase font-bold">Total Shares</p>
+                <p class="text-2xl font-semibold">{{ herd_stats.total_shares }}</p>
+            </div>
+            <div class="bg-black p-2 rounded-md flex flex-col justify-center col-span-2">
+                <p class="text-xs text-cyan-400 uppercase font-bold">Block Templates</p>
+                <p class="text-2xl font-semibold">{{ herd_stats.total_block_templates }}</p>
+            </div>
+        </div>
+    </div>
+    
+    {% include '_navigation_menu.html' %}
+
+    <script>
+        function updateClock() {
+            const timeElement = document.getElementById('clock-time');
+            const dateElement = document.getElementById('clock-date');
+            if (!timeElement || !dateElement) return;
+
+            const now = new Date();
+            const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const dateString = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+            
+            timeElement.textContent = timeString;
+            dateElement.textContent = dateString;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Auto-refresh data sections
+        setInterval(() => {
+            fetch(window.location.href)
+                .then(response => response.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    ['btc-stats', 'herd-stats'].forEach(id => {
+                        const newEl = doc.getElementById(id);
+                        if (newEl) document.getElementById(id).innerHTML = newEl.innerHTML;
+                    });
+                })
+                .catch(err => console.error('Failed to refresh data:', err));
+        }, 5000);
+    </script>
+</body>
+</html>

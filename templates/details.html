@@ -1,0 +1,19 @@
+{% extends "_base_details.html" %}
+{% block title %}Farm Details{% endblock %}
+
+{% block content %}
+<div class="p-4">
+    <h2 class="text-2xl font-semibold mb-4 text-cyan-300">Available Detail Pages</h2>
+    <div class="grid grid-cols-1 gap-4">
+        <a href="{{ url_for('main.details_system') }}" class="bg-gray-800 p-4 rounded-lg hover:bg-gray-700 transition-colors">
+            <h3 class="font-bold text-lg text-cyan-400">System Health</h3>
+            <p class="text-gray-400 text-sm">Real-time CPU, RAM, and Disk usage for the server.</p>
+        </a>
+        <a href="{{ url_for('main.index') }}" class="bg-gray-800 p-4 rounded-lg hover:bg-gray-700 transition-colors">
+            <h3 class="font-bold text-lg text-cyan-400">Miner Fleet List (Desktop View)</h3>
+            <p class="text-gray-400 text-sm">The main table view of all configured miners.</p>
+        </a>
+    </div>
+</div>
+{% endblock %}
+

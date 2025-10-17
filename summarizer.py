@@ -2,21 +2,12 @@ import sqlite3
 import time
 import os
 from datetime import datetime, timedelta, UTC
+from shepherd.database import get_db_connection
 
 # --- Configuration ---
-DATA_DIR = os.path.expanduser('~/shepherd_data')
-DATABASE_FILE = os.path.join(DATA_DIR, 'shepherd.db')
 AGGREGATION_INTERVAL_SECONDS = 5 
 DATA_WINDOW_MINUTES = 2 
 MINIMUM_TIME_DELTA_SECONDS = 2.0
-
-# --- Database Functions ---
-def get_db_connection():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    conn = sqlite3.connect(DATABASE_FILE, timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA journal_mode=WAL;')
-    return conn
 
 # --- Summarization Logic ---
 def update_summary_stats(conn):
@@ -68,8 +59,7 @@ def update_summary_stats(conn):
                         khs = f"{khs_float:.2f}"
                 
                 conn.execute("""
-                    UPDATE miner_summary
-                    SET
+                    UPDATE miner_summary SET
                         last_updated = ?,
                         "KH/s" = CASE WHEN ? IS NOT NULL THEN ? ELSE "KH/s" END,
                         "Temperature" = COALESCE(?, "Temperature"),
@@ -78,21 +68,22 @@ def update_summary_stats(conn):
                         "Total MHashes" = COALESCE(?, "Total MHashes"),
                         "Submits" = COALESCE(?, "Submits"),
                         "Shares" = COALESCE(?, "Shares"),
+                        "Time mining" = COALESCE(?, "Time mining"),
                         last_mhashes_cumulative = ?,
                         last_mhashes_timestamp = ?
                     WHERE miner_id = ?;
                 """, (
-                    now_iso,
-                    khs, khs,
+                    now_iso, khs, khs,
                     latest_logs.get('Temperature', {}).get('value'),
                     latest_logs.get('Valid blocks', {}).get('value'),
                     latest_logs.get('Best difficulty', {}).get('value'),
                     current_mhashes_data.get('value'),
                     latest_logs.get('Submits', {}).get('value'),
-                    latest_logs.get('Shares', {}).get('value'),
-                    current_mhashes,
-                    current_timestamp_iso,
-                    miner_id
+                    # --- THE FIX: Look for "32Bit shares" instead of "Shares" ---
+                    latest_logs.get('32Bit shares', {}).get('value'),
+                    # -----------------------------------------------------------
+                    latest_logs.get('Time mining', {}).get('value'),
+                    current_mhashes, current_timestamp_iso, miner_id
                 ))
             except (ValueError, TypeError, KeyError) as e:
                 print(f"Could not process summary for miner {miner_id}: {e}")

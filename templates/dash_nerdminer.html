@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NerdMiner View</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html, body { overflow: hidden; background-color: #000; }
+        .hash-grid span {
+            width: 8px;
+            height: 8px;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body class="text-amber-400 font-mono h-full" onclick="toggleMenu(event)">
+    <div class="h-full flex flex-col items-center justify-center p-2">
+        <div class="w-full max-w-md border-2 border-amber-400 p-2 relative">
+            
+            <!-- Top Stats -->
+            <div class="flex justify-between items-center text-sm mb-2">
+                <div>
+                    <span class="text-gray-500">BLOCK:</span>
+                    <span>{{ stats.current_block }}</span>
+                </div>
+                <div>
+                    <span class="text-lg font-bold">{{ stats.hash_rate }}</span>
+                    <span class="text-gray-500">KH/s</span>
+                </div>
+            </div>
+
+            <!-- Center Content -->
+            <div class="flex justify-between gap-2">
+                <!-- Left Stats -->
+                <div class="flex flex-col justify-center space-y-2 text-sm">
+                    <div>
+                        <p class="text-gray-500">BTC/USD</p>
+                        <p>{{ stats.btc_price }}</p>
+                    </div>
+                     <div>
+                        <p class="text-gray-500">Market Cap</p>
+                        <p>{{ stats.market_cap }}</p>
+                    </div>
+                </div>
+
+                <!-- Hash Visualizer -->
+                <div id="hash-grid" class="hash-grid border border-gray-700 p-1 w-48 h-48 grid grid-cols-16 gap-px" style="grid-template-columns: repeat(16, minmax(0, 1fr));">
+                    <!-- JS will populate this -->
+                </div>
+
+                <!-- Right Stats -->
+                 <div class="flex flex-col justify-center space-y-2 text-sm text-right">
+                    <div>
+                        <p class="text-gray-500">1$ =</p>
+                        <p>{{ stats.sats_per_dollar }} sats</p>
+                    </div>
+                     <div>
+                        <p class="text-gray-500">Difficulty</p>
+                        <p>{{ stats.difficulty }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Stats -->
+            <div class="text-center text-sm mt-2">
+                <p><span class="text-gray-500">Last block found: </span>{{ stats.time_since_block }} ago</p>
+            </div>
+        </div>
+    </div>
+    
+    {% include '_navigation_menu.html' %}
+
+    <script>
+        const grid = document.getElementById('hash-grid');
+        const colors = ['bg-gray-900', 'bg-gray-800', 'bg-amber-800', 'bg-amber-600', 'bg-amber-400', 'bg-yellow-300'];
+        const cells = [];
+
+        // Create the grid cells
+        for (let i = 0; i < 16 * 16; i++) {
+            const cell = document.createElement('span');
+            grid.appendChild(cell);
+            cells.push(cell);
+        }
+
+        // Animate the grid
+        function animateGrid() {
+            for (let i = 0; i < 20; i++) { // Update a few cells each frame for performance
+                const randomIndex = Math.floor(Math.random() * cells.length);
+                const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                cells[randomIndex].className = randomColor;
+            }
+        }
+
+        setInterval(animateGrid, 50); // Run the animation
+    </script>
+</body>
+</html>
+

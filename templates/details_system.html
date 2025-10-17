@@ -1,0 +1,67 @@
+{% extends "_base_details.html" %}
+{% block title %}System Health{% endblock %}
+
+{% block content %}
+<div class="p-2">
+    {% if not stats.psutil_installed %}
+    <div class="p-4 m-2 text-sm rounded-lg bg-yellow-800 text-yellow-200" role="alert">
+        <span class="font-bold">Warning:</span> The 'psutil' library is not installed. System stats cannot be displayed. Please run 'pip install psutil' to enable this feature.
+    </div>
+    {% else %}
+    <div class="space-y-2">
+        <!-- Hostname, IP, and Uptime -->
+        <div class="flex justify-between items-center text-xs p-1">
+            <p class="font-bold text-sm">{{ stats.hostname }}</p>
+            <p class="text-gray-400 font-mono">{{ stats.ip_address }}</p>
+            <p class="text-cyan-400"><span class="text-gray-500">UPTIME:</span> {{ stats.uptime }}</p>
+        </div>
+
+        <!-- Stat Bubbles -->
+        <div class="bg-gray-800 p-3 rounded-lg space-y-3">
+            <!-- CPU -->
+            <div>
+                <div class="flex justify-between items-center text-xs mb-1">
+                    <h3 class="font-semibold text-cyan-400">CPU</h3>
+                    <span class="font-mono text-sm">{{ stats.cpu_temp }}</span>
+                </div>
+                <div class="w-full bg-gray-700 rounded-full h-2.5">
+                    <div class="bg-cyan-600 h-2.5 rounded-full" style="width: {{ stats.cpu_percent }}%"></div>
+                </div>
+                <p class="text-right text-xs mt-1">{{ stats.cpu_percent }}%</p>
+            </div>
+            <!-- RAM -->
+            <div>
+                <div class="flex justify-between items-center text-xs mb-1">
+                    <h3 class="font-semibold text-green-400">RAM</h3>
+                    <p>{{ stats.ram_percent }}%</p>
+                </div>
+                <div class="w-full bg-gray-700 rounded-full h-2.5">
+                    <div class="bg-green-600 h-2.5 rounded-full" style="width: {{ stats.ram_percent }}%"></div>
+                </div>
+            </div>
+             <!-- SWAP -->
+            <div>
+                <div class="flex justify-between items-center text-xs mb-1">
+                    <h3 class="font-semibold text-orange-400">Swap</h3>
+                    <p>{{ stats.swap_percent }}%</p>
+                </div>
+                <div class="w-full bg-gray-700 rounded-full h-2.5">
+                    <div class="bg-orange-600 h-2.5 rounded-full" style="width: {{ stats.swap_percent }}%"></div>
+                </div>
+            </div>
+             <!-- DISK -->
+            <div>
+                <div class="flex justify-between items-center text-xs mb-1">
+                    <h3 class="font-semibold text-purple-400">Disk</h3>
+                    <p>{{ stats.disk_percent }}%</p>
+                </div>
+                <div class="w-full bg-gray-700 rounded-full h-2.5">
+                    <div class="bg-purple-600 h-2.5 rounded-full" style="width: {{ stats.disk_percent }}%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
