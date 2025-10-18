@@ -1,3 +1,4 @@
+<!-- V.0.0.0.2 -->
 <!DOCTYPE html>
 <html lang="en" class="h-full">
 <head>
@@ -23,45 +24,30 @@
             <div class="bg-yellow-400 text-black p-1 rounded-md">
                 <p class="text-xs font-bold uppercase">BTC Price</p>
                 <p class="text-sm font-semibold">
-                    <span id="btc-price">${{ herd_stats.btc_price }}</span>
-                    <span id="btc-change" class="{% if herd_stats.btc_change >= 0 %} text-green-800 {% else %} text-red-800 {% endif %}">
-                        ({{ "%.2f"|format(herd_stats.btc_change) }}%)
-                    </span>
+                    <span id="btc-price">$--,--</span>
+                    <span id="btc-change" class="">(--.--)%</span>
                 </p>
             </div>
         </header>
 
-        <!-- Main Content: Miner Grid - MODIFIED for higher density -->
+        <!-- Main Content: Miner Grid -->
         <main id="miner-list" class="flex-grow overflow-y-auto p-1 no-scrollbar grid grid-cols-5 gap-1">
-            {% for miner in miners %}
-            <a id="miner-{{ miner.id }}" href="{{ url_for('main.details_miner', miner_id=miner.id) }}" class="aspect-square rounded-md flex flex-col items-center justify-center p-1 text-center
-                {% if miner.status == 'offline' %} bg-red-900/50 border border-red-700
-                {% else %} bg-gray-800 {% endif %}">
-                <p class="font-bold text-[11px]">{{ miner.miner_id }}</p>
-                {% if miner.status == 'offline' %}
-                <p class="text-[10px] text-red-400 mt-1">Offline</p>
-                {% else %}
-                <p class="font-semibold text-sm text-cyan-300">{{ miner['KH/s'] or 'N/A' }}</p>
-                {% endif %}
-            </a>
-            {% else %}
-            <p class="col-span-full text-center text-gray-500 pt-8">No miners found.</p>
-            {% endfor %}
+            <p class="col-span-full text-center text-gray-500 pt-8">Loading miners...</p>
         </main>
 
         <!-- Footer -->
         <footer id="page-footer" class="flex-shrink-0 bg-gray-800 p-2 rounded-t-lg grid grid-cols-3 gap-2 text-center">
             <div>
                 <p class="text-xs text-cyan-400 uppercase font-bold">Total Hash</p>
-                <p id="total-hash" class="text-lg font-semibold">{{ "%.2f"|format(herd_stats.total_hash_khs) }}</p>
+                <p id="total-hash" class="text-lg font-semibold">--.--</p>
             </div>
             <div>
                 <p class="text-xs text-cyan-400 uppercase font-bold">Shares</p>
-                <p id="total-shares" class="text-lg font-semibold">{{ herd_stats.total_shares }}</p>
+                <p id="total-shares" class="text-lg font-semibold">--</p>
             </div>
             <div>
                 <p class="text-xs text-cyan-400 uppercase font-bold">Templates</p>
-                <p id="total-templates" class="text-lg font-semibold">{{ herd_stats.total_block_templates }}</p>
+                <p id="total-templates" class="text-lg font-semibold">--</p>
             </div>
         </footer>
     </div>
@@ -69,62 +55,50 @@
     {% include '_navigation_menu.html' %}
 
     <script>
-        // --- Clock Logic (Unaffected) ---
         function updateClock() {
             const timeElement = document.getElementById('clock-time');
             const dateElement = document.getElementById('clock-date');
             if (!timeElement || !dateElement) return;
             const now = new Date();
-            const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const dateString = now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
-            timeElement.textContent = timeString;
-            dateElement.textContent = dateString;
+            timeElement.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            dateElement.textContent = now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
         }
         setInterval(updateClock, 1000);
         updateClock();
 
-        // --- Data Refresh Logic ---
         async function refreshData() {
             try {
-                const response = await fetch('/api/dash/health');
-                if (!response.ok) throw new Error('Network response was not ok');
+                const response = await fetch('/api/herd_data');
                 const data = await response.json();
 
                 // Update Header Stats
-                document.getElementById('btc-price').textContent = `$${data.herd_stats.btc_price}`;
+                const btcData = data.btc_price_data;
+                document.getElementById('btc-price').textContent = `$${btcData.price_usd.toLocaleString('en-US', {maximumFractionDigits: 2})}`;
                 const btcChangeEl = document.getElementById('btc-change');
-                const btcChange = parseFloat(data.herd_stats.btc_change);
-                btcChangeEl.textContent = `(${btcChange.toFixed(2)}%)`;
-                btcChangeEl.className = btcChange >= 0 ? 'text-green-800' : 'text-red-800';
+                btcChangeEl.textContent = `(${btcData.change_24h.toFixed(2)}%)`;
+                btcChangeEl.className = btcData.change_24h >= 0 ? 'text-green-800' : 'text-red-800';
 
                 // Update Footer Stats
-                document.getElementById('total-hash').textContent = data.herd_stats.total_hash_khs;
-                document.getElementById('total-shares').textContent = data.herd_stats.total_shares;
-                document.getElementById('total-templates').textContent = data.herd_stats.total_block_templates;
+                const herdStats = data.herd_stats;
+                document.getElementById('total-hash').textContent = herdStats.total_hash_khs.toFixed(2);
+                document.getElementById('total-shares').textContent = herdStats.total_shares.toLocaleString('en-US');
+                document.getElementById('total-templates').textContent = herdStats.total_block_templates.toLocaleString('en-US');
 
                 // Update Miner Grid
-                const minerList = document.getElementById('miner-list');
-                const existingMinerIds = new Set([...minerList.children].map(el => el.id));
-                const incomingMinerIds = new Set(data.miners.map(m => `miner-${m.id}`));
+                const minerListEl = document.getElementById('miner-list');
+                minerListEl.innerHTML = ''; // Clear current content
+                
+                if (!data.miners_list || data.miners_list.length === 0) {
+                    minerListEl.innerHTML = '<p class="col-span-full text-center text-gray-500 pt-8">No miners found.</p>';
+                    return;
+                }
 
-                existingMinerIds.forEach(id => {
-                    if (!incomingMinerIds.has(id)) {
-                        document.getElementById(id)?.remove();
-                    }
-                });
-
-                data.miners.forEach(miner => {
-                    let minerBubble = document.getElementById(`miner-${miner.id}`);
-                    
-                    if (!minerBubble) {
-                        minerBubble = document.createElement('a'); // Was a div, now an anchor tag
-                        minerBubble.id = `miner-${miner.id}`;
-                        minerList.appendChild(minerBubble);
-                    }
-                    
-                    minerBubble.href = `/details/miner/${miner.id}`; // Set the link
+                data.miners_list.forEach(miner => {
+                    const minerBubble = document.createElement('a');
+                    minerBubble.href = `/details/miner/${miner.id}`;
                     
                     let classes = 'aspect-square rounded-md flex flex-col items-center justify-center p-1 text-center ';
+                    const khs = miner['KH/s'] ? parseFloat(miner['KH/s']).toFixed(2) : 'N/A';
                     let innerHTML = '';
 
                     if (miner.status === 'offline') {
@@ -137,12 +111,13 @@
                         classes += 'bg-gray-800';
                         innerHTML = `
                             <p class="font-bold text-[11px]">${miner.miner_id}</p>
-                            <p class="font-semibold text-sm text-cyan-300">${miner['KH/s'] || 'N/A'}</p>
+                            <p class="font-semibold text-sm text-cyan-300">${khs}</p>
                         `;
                     }
                     
                     minerBubble.className = classes;
                     minerBubble.innerHTML = innerHTML;
+                    minerListEl.appendChild(minerBubble);
                 });
 
             } catch (error) {
@@ -150,6 +125,7 @@
             }
         }
         setInterval(refreshData, 5000); 
+        document.addEventListener('DOMContentLoaded', refreshData);
     </script>
 </body>
 </html>

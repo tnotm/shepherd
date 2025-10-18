@@ -1,3 +1,4 @@
+<!-- V.0.0.0.4 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -16,42 +17,46 @@
 
     <div class="h-full flex flex-col">
 
-        <!-- BTC Price Section --><div id="btc-stats" class="flex-shrink-0 bg-yellow-400 text-black p-2">
+        <!-- BTC Price Section -->
+        <div id="btc-stats" class="flex-shrink-0 bg-yellow-400 text-black p-2">
             <div class="grid grid-cols-2 gap-4 text-center">
                 <div>
                     <p class="text-sm font-bold uppercase tracking-wider">BTC Price</p>
-                    <p class="text-3xl font-semibold">${{ herd_stats.btc_price }}</p>
+                    <p id="btc-price" class="text-3xl font-semibold">$--,--</p>
                 </div>
                 <div>
                     <p class="text-sm font-bold uppercase tracking-wider">% 24HR</p>
-                    <p class="text-3xl font-semibold {% if herd_stats.btc_change >= 0 %} text-green-700 {% else %} text-red-700 {% endif %}">{{ "%.2f"|format(herd_stats.btc_change) }}%</p>
+                    <p id="btc-change" class="text-3xl font-semibold">--.--%</p>
                 </div>
             </div>
         </div>
 
         <!-- Clock Section -->
-        <div class="flex-grow bg-gray-800 text-white flex flex-col items-center justify-center text-center">
-            <h1 id="clock-display" class="font-bold font-sans text-7xl tracking-tighter"></h1>
-            <p id="clock-date" class="text-2xl mt-2"></p>
+        <div class="flex-grow bg-gray-800 text-white flex flex-col items-center justify-center">
+            <div id="clock-container" class="text-center">
+                <h1 id="clock-time" class="text-7xl font-bold font-sans"></h1>
+                <p id="clock-date" class="text-2xl mt-2"></p>
+            </div>
         </div>
 
-        <!-- Herd Stats Section --><div id="herd-stats" class="flex-shrink-0 bg-black p-2">
+        <!-- Herd Stats Section -->
+        <div id="herd-stats" class="flex-shrink-0 bg-black p-2">
             <div class="grid grid-cols-4 gap-4 text-center">
                 <div>
                     <p class="text-xs font-bold uppercase text-cyan-400">Miners</p>
-                    <p class="text-2xl font-semibold">{{ herd_stats.online_miners }}/{{ herd_stats.total_miners }}</p>
+                    <p id="stat-miners" class="text-2xl font-semibold">--/--</p>
                 </div>
                 <div>
                     <p class="text-xs font-bold uppercase text-cyan-400">Herd Hash</p>
-                    <p class="text-2xl font-semibold">{{ "%.2f"|format(herd_stats.total_hash_khs) }}</p>
+                    <p id="stat-hash" class="text-2xl font-semibold">--.--</p>
                 </div>
                 <div>
                     <p class="text-xs font-bold uppercase text-cyan-400">Shares</p>
-                    <p class="text-2xl font-semibold">{{ herd_stats.total_shares }}</p>
+                    <p id="stat-shares" class="text-2xl font-semibold">--</p>
                 </div>
                 <div>
                     <p class="text-xs font-bold uppercase text-cyan-400">Templates</p>
-                    <p class="text-2xl font-semibold">{{ herd_stats.total_block_templates }}</p>
+                    <p id="stat-templates" class="text-2xl font-semibold">--</p>
                 </div>
             </div>
         </div>
@@ -61,48 +66,49 @@
 
     <script>
         function updateClock() {
-            const clockDisplayElement = document.getElementById('clock-display');
+            const timeElement = document.getElementById('clock-time');
             const dateElement = document.getElementById('clock-date');
-            if (!clockDisplayElement || !dateElement) return;
+            if (!timeElement || !dateElement) return;
 
             const now = new Date();
-            
-            // This will generate the full time string like "3:06:26 PM"
-            const timeString = now.toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: true
-            });
-            clockDisplayElement.textContent = timeString;
+            timeElement.textContent = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+            dateElement.textContent = now.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        }
+        
+        async function refreshData() {
+             try {
+                const response = await fetch('/api/herd_data');
+                const data = await response.json();
 
-            const dateString = now.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-            dateElement.textContent = dateString;
+                // Update BTC stats
+                const btcData = data.btc_price_data;
+                document.getElementById('btc-price').textContent = `$${btcData.price_usd.toLocaleString('en-US', {maximumFractionDigits: 2})}`;
+                const btcChangeEl = document.getElementById('btc-change');
+                btcChangeEl.textContent = `${btcData.change_24h.toFixed(2)}%`;
+                btcChangeEl.className = 'text-3xl font-semibold '; // Reset
+                if (btcData.change_24h >= 0) {
+                    btcChangeEl.classList.add('text-green-700');
+                } else {
+                    btcChangeEl.classList.add('text-red-700');
+                }
+
+                // Update Herd stats
+                const herdStats = data.herd_stats;
+                document.getElementById('stat-miners').textContent = `${herdStats.online_miners}/${herdStats.total_miners}`;
+                document.getElementById('stat-hash').textContent = herdStats.total_hash_khs.toFixed(2);
+                document.getElementById('stat-shares').textContent = herdStats.total_shares.toLocaleString('en-US');
+                document.getElementById('stat-templates').textContent = herdStats.total_block_templates.toLocaleString('en-US');
+
+            } catch (error) {
+                console.error('Failed to refresh data:', error);
+            }
         }
 
         setInterval(updateClock, 1000);
         updateClock();
 
-        setInterval(() => {
-            // Prevent refresh if nav menu is open
-            const navMenuPanel = document.getElementById('nav-menu-panel');
-            if (navMenuPanel && !navMenuPanel.classList.contains('-translate-x-full')) {
-                return;
-            }
-            fetch(window.location.href)
-                .then(response => response.text())
-                .then(html => {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    
-                    ['btc-stats', 'herd-stats'].forEach(id => {
-                        const newEl = doc.getElementById(id);
-                        if (newEl) document.getElementById(id).innerHTML = newEl.innerHTML;
-                    });
-                })
-                .catch(err => console.error('Failed to refresh data:', err));
-        }, 5000);
-        
+        setInterval(refreshData, 5000);
+        document.addEventListener('DOMContentLoaded', refreshData);
     </script>
 </body>
 </html>

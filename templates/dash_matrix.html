@@ -1,4 +1,4 @@
-<!-- V.0.0.1.8 -->
+<!-- V.0.0.2.0 -->
 <!DOCTYPE html>
 <html lang="en" class="h-full">
 <head>
@@ -22,25 +22,19 @@
         <div class="bg-black/50 p-3 rounded-md text-left">
             <p class="text-sm text-green-400 uppercase font-bold">BTC Price</p>
             <div class="flex justify-between items-center mt-1">
-                <p class="text-7xl font-semibold font-numeric">
-                    ${{ "{:,.0f}".format(herd_stats.btc_price_data.price_usd|float) if herd_stats.btc_price_data.price_usd != 'N/A' else 'N/A' }}
+                <p id="btc-price" class="text-7xl font-semibold font-numeric">
+                    $--,--
                 </p>
                 <div class="flex flex-col items-center">
-                    {% if herd_stats.btc_price_data.change_24h >= 0 %}
-                        <svg class="h-5 w-5 text-green-500" viewBox="0 0 20 20" fill="currentColor">
-                            <path d="M10 4l-6 8h12l-6-8z" />
-                        </svg>
-                        <p class="text-xl font-semibold text-green-500 mt-1 font-numeric">
-                            {{ "%.2f"|format(herd_stats.btc_price_data.change_24h) }}%
-                        </p>
-                    {% else %}
-                        <p class="text-xl font-semibold text-red-500 mb-1 font-numeric">
-                            {{ "%.2f"|format(herd_stats.btc_price_data.change_24h) }}%
-                        </p>
-                        <svg class="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
-                            <path d="M10 16l6-8H4l6 8z" />
-                        </svg>
-                    {% endif %}
+                    <svg id="btc-arrow-up" class="h-5 w-5 text-green-500 hidden" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10 4l-6 8h12l-6-8z" />
+                    </svg>
+                    <p id="btc-change" class="text-xl font-semibold mt-1 mb-1 font-numeric">
+                        --.--%
+                    </p>
+                    <svg id="btc-arrow-down" class="h-5 w-5 text-red-500 hidden" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10 16l6-8H4l6 8z" />
+                    </svg>
                 </div>
             </div>
         </div>
@@ -49,19 +43,19 @@
         <div class="grid grid-cols-4 gap-2 text-center">
             <div class="bg-black/50 p-2 rounded-md">
                 <p class="text-xs text-green-400 uppercase font-bold">Miners</p>
-                <p class="text-2xl font-semibold font-numeric">{{ herd_stats.online_miners }}/{{ herd_stats.total_miners }}</p>
+                <p id="miners-stats" class="text-2xl font-semibold font-numeric">--/--</p>
             </div>
             <div class="bg-black/50 p-2 rounded-md">
                 <p class="text-xs text-green-400 uppercase font-bold">Herd Hash</p>
-                <p class="text-2xl font-semibold font-numeric">{{ "%.2f"|format(herd_stats.total_hash_khs) }}</p>
+                <p id="hash-stats" class="text-2xl font-semibold font-numeric">--.--</p>
             </div>
             <div class="bg-black/50 p-2 rounded-md">
                 <p class="text-xs text-green-400 uppercase font-bold">Shares</p>
-                <p class="text-2xl font-semibold font-numeric">{{ herd_stats.total_shares }}</p>
+                <p id="shares-stats" class="text-2xl font-semibold font-numeric">--</p>
             </div>
             <div class="bg-black/50 p-2 rounded-md">
                 <p class="text-xs text-green-400 uppercase font-bold">Templates</p>
-                <p class="text-2xl font-semibold font-numeric">{{ herd_stats.total_block_templates }}</p>
+                <p id="templates-stats" class="text-2xl font-semibold font-numeric">--</p>
             </div>
         </div>
 
@@ -118,22 +112,71 @@
             dateElement.textContent = dateString;
         }
 
+        async function refreshData() {
+            try {
+                // CHANGED: Pointing to the new unified API endpoint
+                const response = await fetch('/api/herd_data');
+                if (!response.ok) throw new Error("Network response was not ok");
+                
+                const data = await response.json();
+                
+                // Update BTC Price and Change
+                const btcData = data.btc_price_data;
+                document.getElementById('btc-price').textContent = `$${btcData.price_usd.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+                
+                const change = btcData.change_24h;
+                const changeEl = document.getElementById('btc-change');
+                const arrowUp = document.getElementById('btc-arrow-up');
+                const arrowDown = document.getElementById('btc-arrow-down');
+
+                changeEl.textContent = `${change.toFixed(2)}%`;
+                if (change >= 0) {
+                    changeEl.classList.remove('text-red-500');
+                    changeEl.classList.add('text-green-500');
+                    arrowUp.classList.remove('hidden');
+                    arrowDown.classList.add('hidden');
+                } else {
+                    changeEl.classList.remove('text-green-500');
+                    changeEl.classList.add('text-red-500');
+                    arrowUp.classList.add('hidden');
+                    arrowDown.classList.remove('hidden');
+                }
+                
+                // Update Middle Stats
+                const herdStats = data.herd_stats;
+                document.getElementById('miners-stats').textContent = `${herdStats.online_miners}/${herdStats.total_miners}`;
+                document.getElementById('hash-stats').textContent = herdStats.total_hash_khs.toFixed(2);
+                document.getElementById('shares-stats').textContent = herdStats.total_shares.toLocaleString('en-US');
+                document.getElementById('templates-stats').textContent = herdStats.total_block_templates.toLocaleString('en-US');
+
+            } catch (error) {
+                console.error('Failed to refresh data:', error);
+            }
+        }
+
+        // --- Start Intervals ---
         setInterval(drawMatrix, 30);
         setInterval(updateClock, 1000);
-        updateClock();
+        // CHANGED: Matrix now updates every 5 seconds to match other dashboards
+        setInterval(refreshData, 5000); 
+
+        // --- Initial Load ---
+        document.addEventListener('DOMContentLoaded', () => {
+            updateClock();
+            refreshData();
+        });
 
         window.addEventListener('resize', () => {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+            const newColumns = canvas.width / fontSize;
+            for (let x = 0; x < newColumns; x++) {
+                if (!rainDrops[x]) rainDrops[x] = 1;
+            }
         });
         
-        // This function is included from _navigation_menu.html but is here for clarity
-        // It's triggered by the onclick event on the body
         function toggleMenu(event) {
-            // Stop the click from propagating to the body if a link is clicked
-            if (event && event.target.closest('a')) {
-                return;
-            }
+            if (event && event.target.closest('a')) { return; }
             event.stopPropagation();
             document.getElementById('nav-menu-overlay').classList.toggle('hidden');
             document.getElementById('nav-menu-panel').classList.toggle('-translate-x-full');
