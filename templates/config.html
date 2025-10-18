@@ -1,3 +1,7 @@
+<!-- 
+Version: 0.0.0.7
+Description: Main configuration page for Shepherd.
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,7 +10,6 @@
     <title>Configuration - The Shepherd</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Simple style to highlight the active menu item */
         .nav-link.active {
             background-color: #0e7490; /* cyan-700 */
             color: white;
@@ -20,7 +23,6 @@
             <a href="{{ url_for('main.index') }}" class="bg-gray-700 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded transition-colors">Back to Dashboard</a>
         </header>
 
-        <!-- MODIFIED: Flash message container -->
         <div id="flash-container">
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
@@ -38,7 +40,6 @@
                 {% endif %}
             {% endwith %}
         </div>
-        <!-- END MODIFICATION -->
 
         <div class="flex flex-col md:flex-row gap-8">
             <!-- Left Navigation Menu -->
@@ -48,6 +49,7 @@
                     <li><a href="#miners" class="nav-link text-lg block p-3 rounded-md hover:bg-gray-700" onclick="showPane('miners', this)">Miners</a></li>
                     <li><a href="#pools" class="nav-link text-lg block p-3 rounded-md hover:bg-gray-700" onclick="showPane('pools', this)">Pools</a></li>
                     <li><a href="#addresses" class="nav-link text-lg block p-3 rounded-md hover:bg-gray-700" onclick="showPane('addresses', this)">Coin Addresses</a></li>
+                    <li><a href="#developer" class="nav-link text-lg block p-3 rounded-md hover:bg-gray-700" onclick="showPane('developer', this)">Developer Options</a></li>
                 </ul>
             </nav>
 
@@ -62,14 +64,17 @@
                 <!-- Miners Pane -->
                 <div id="pane-miners" class="content-pane hidden bg-gray-800 p-6 rounded-lg">
                     <h2 class="text-2xl font-semibold mb-4 text-cyan-300">Manage Miners</h2>
+                    
                     <div class="mb-8">
-                        <h3 class="text-xl font-semibold mb-2">Bulk Upload Miners</h3>
-                        <p class="text-gray-400 mb-4">Add or update multiple miners at once using a CSV file.</p>
-                        <form action="{{ url_for('main.upload_miners') }}" method="post" enctype="multipart/form-data">
-                            <input type="file" name="miner_file" class="mb-2 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-600 file:text-white hover:file:bg-cyan-700"/>
-                            <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded">Upload File</button>
-                        </form>
+                        <h3 class="text-xl font-semibold mb-2 text-cyan-300">Discovered Miners</h3>
+                        <p class="text-gray-400 mb-4">Newly connected devices will appear here. Assign a Miner ID to add them to your farm.</p>
+                        <div id="discovered-miners-list" class="space-y-3">
+                            <p id="no-devices-message" class="text-gray-500">No new devices detected. Plug in a miner to begin.</p>
+                        </div>
                     </div>
+
+                    <hr class="border-gray-700 my-8">
+                    
                     <div>
                         <h3 class="text-xl font-semibold mb-2">Configured Miners</h3>
                         <div class="overflow-x-auto">
@@ -77,7 +82,8 @@
                                 <thead>
                                     <tr>
                                         <th class="px-5 py-3 border-b-2 border-gray-700 text-left text-xs font-semibold uppercase">Miner ID</th>
-                                        <th class="px-5 py-3 border-b-2 border-gray-700 text-left text-xs font-semibold uppercase">TTY Symlink</th>
+                                        <th class="px-5 py-3 border-b-2 border-gray-700 text-left text-xs font-semibold uppercase">Device & Port Path</th>
+                                        <th class="px-5 py-3 border-b-2 border-gray-700 text-left text-xs font-semibold uppercase">Location Notes</th>
                                         <th class="px-5 py-3 border-b-2 border-gray-700 text-left text-xs font-semibold uppercase">Version</th>
                                         <th class="px-5 py-3 border-b-2 border-gray-700 text-left text-xs font-semibold uppercase">Actions</th>
                                     </tr>
@@ -86,9 +92,14 @@
                                     {% for miner in miners %}
                                     <tr class="hover:bg-gray-800">
                                         <td class="px-5 py-4 border-b border-gray-700">{{ miner.miner_id }}</td>
-                                        <td class="px-5 py-4 border-b border-gray-700 font-mono text-sm">{{ miner.tty_symlink }}</td>
+                                        <td class="px-5 py-4 border-b border-gray-700 font-mono text-xs">
+                                            <p>{{ miner.dev_path }}</p>
+                                            <p class="text-cyan-400">{{ miner.port_path }}</p>
+                                        </td>
+                                        <td class="px-5 py-4 border-b border-gray-700 text-sm">{{ miner.location_notes }}</td>
                                         <td class="px-5 py-4 border-b border-gray-700">{{ miner.nerdminer_vrs }}</td>
-                                        <td class="px-5 py-4 border-b border-gray-700">
+                                        <td class="px-5 py-4 border-b border-gray-700 space-x-4">
+                                            <button type="button" onclick="openEditModal({{ miner.id }}, '{{ miner.miner_id }}', '{{ miner.chipset or '' }}', '{{ miner.nerdminer_vrs or '' }}', '{{ miner.location_notes or '' }}')" class="text-amber-400 hover:text-amber-300">Edit</button>
                                             <button type="button" onclick="openDeleteModal('{{ url_for('main.delete_miner', miner_id=miner.id) }}', 'this miner')" class="text-red-400 hover:text-red-300">Delete</button>
                                         </td>
                                     </tr>
@@ -112,7 +123,6 @@
                                 <input type="text" name="pool_pass" placeholder="Password (default 'x')" class="bg-gray-700 p-2 rounded-md">
                             </div>
                             
-                            <!-- Dynamic User Address Logic -->
                             <div>
                                 <label class="block text-sm font-medium text-gray-300 mb-2">Pool User/Address</label>
                                 <div class="flex items-center space-x-6">
@@ -141,7 +151,6 @@
                             <div id="text_user_section" class="hidden">
                                 <input id="text_user_address" type="text" name="text_user_address" placeholder="Enter full username or address" class="mt-2 block w-full bg-gray-700 p-2 rounded-md" disabled>
                             </div>
-                            <!-- End New Logic -->
 
                             <div>
                                 <button type="submit" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded">Add Pool</button>
@@ -227,10 +236,74 @@
                          </table>
                     </div>
                 </div>
+
+                <!-- Developer Options Pane -->
+                <div id="pane-developer" class="content-pane hidden bg-gray-800 p-6 rounded-lg">
+                    <h2 class="text-2xl font-semibold mb-4 text-cyan-300">Developer Options</h2>
+                    <div class="space-y-6">
+                        <div>
+                            <h3 class="text-xl font-semibold mb-2">Service Control</h3>
+                            <p class="text-gray-400 mb-4">Restart background services. Use this after making changes that affect data collection or processing.</p>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {% for service in services %}
+                                <div class="bg-gray-900 p-4 rounded-md flex items-center justify-between">
+                                    <div>
+                                        <p class="font-mono text-sm">{{ service }}</p>
+                                        <span class="text-xs px-2 py-0.5 rounded-full {% if services[service] == 'active' %} bg-green-800 text-green-200 {% elif services[service] == 'inactive' or services[service] == 'failed' %} bg-red-800 text-red-200 {% else %} bg-yellow-800 text-yellow-200 {% endif %}">
+                                            {{ services[service] }}
+                                        </span>
+                                    </div>
+                                    <form action="{{ url_for('main.restart_service', service_name=service) }}" method="post">
+                                        <button type="submit" class="bg-cyan-700 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded">Restart</button>
+                                    </form>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <div class="mt-4">
+                                <form action="{{ url_for('main.restart_all_services') }}" method="post">
+                                    <button type="submit" class="w-full bg-red-700 hover:bg-red-600 text-white font-bold py-2 px-6 rounded">Restart All Services</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </main>
         </div>
     </div>
 
+    <!-- Edit Miner Modal -->
+    <div id="edit-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+        <div class="bg-gray-800 rounded-lg p-8 max-w-lg w-full">
+            <h2 class="text-2xl font-bold text-white mb-4">Edit Miner Details</h2>
+            <form id="edit-modal-form" method="post">
+                <div class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="edit_miner_id" class="block text-sm font-medium text-gray-300">Miner ID</label>
+                            <input type="text" id="edit_miner_id" name="miner_id" required class="mt-1 block w-full bg-gray-700 p-2 rounded-md">
+                        </div>
+                        <div>
+                            <label for="edit_nerdminer_vrs" class="block text-sm font-medium text-gray-300">Firmware Version</label>
+                            <input type="text" id="edit_nerdminer_vrs" name="nerdminer_vrs" class="mt-1 block w-full bg-gray-700 p-2 rounded-md">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="edit_chipset" class="block text-sm font-medium text-gray-300">Chipset</label>
+                        <input type="text" id="edit_chipset" name="chipset" class="mt-1 block w-full bg-gray-700 p-2 rounded-md">
+                    </div>
+                    <div>
+                        <label for="edit_location_notes" class="block text-sm font-medium text-gray-300">Location Notes</label>
+                        <textarea id="edit_location_notes" name="location_notes" rows="3" class="mt-1 block w-full bg-gray-700 p-2 rounded-md"></textarea>
+                    </div>
+                </div>
+                <div class="flex justify-end gap-4 mt-6">
+                    <button type="button" onclick="closeEditModal()" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">Cancel</button>
+                    <button type="submit" class="bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-4 rounded">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
     <!-- Delete Confirmation Modal -->
     <div id="delete-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
         <div class="bg-gray-800 rounded-lg p-8 max-w-sm w-full">
@@ -245,7 +318,6 @@
         </div>
     </div>
 
-
     <script>
         function showPane(paneId, element) {
             window.location.hash = paneId;
@@ -259,6 +331,57 @@
             }
         }
 
+        async function fetchDiscoveredDevices() {
+            try {
+                const response = await fetch("{{ url_for('main.api_unconfigured_devices') }}");
+                if (!response.ok) throw new Error('Network response');
+                const devices = await response.json();
+                const listContainer = document.getElementById('discovered-miners-list');
+                const noDevicesMsg = document.getElementById('no-devices-message');
+                listContainer.querySelectorAll('.discovered-device-card').forEach(card => card.remove());
+
+                if (devices.length > 0) {
+                    noDevicesMsg.classList.add('hidden');
+                    devices.forEach(device => {
+                        const deviceCard = document.createElement('div');
+                        deviceCard.className = 'discovered-device-card bg-gray-900 p-4 rounded-lg flex flex-col md:flex-row items-center justify-between gap-4';
+                        deviceCard.innerHTML = `
+                            <div class="font-mono text-xs text-gray-400 text-center md:text-left">
+                                <p><strong>Path:</strong> <span class="text-cyan-400">${device.dev_path}</span></p>
+                                <p><strong>Port:</strong> <span class="text-cyan-400">${device.port_path || 'N/A'}</span></p>
+                                <p><strong>Serial:</strong> ${device.serial_number || 'N/A'}</p>
+                            </div>
+                            <form action="{{ url_for('main.onboard_miner') }}" method="post" class="flex items-center gap-2 w-full md:w-auto">
+                                <input type="hidden" name="unconfigured_id" value="${device.id}">
+                                <input type="text" name="miner_id" placeholder="Enter Miner ID" required class="bg-gray-700 p-2 rounded-md w-full md:w-auto flex-grow">
+                                <button type="submit" class="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded">Add Miner</button>
+                            </form>
+                        `;
+                        listContainer.appendChild(deviceCard);
+                    });
+                } else {
+                    noDevicesMsg.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Failed to fetch discovered devices:', error);
+            }
+        }
+        
+        function openEditModal(minerId, currentMinerId, currentChipset, currentVersion, currentLocationNotes) {
+            const modal = document.getElementById('edit-modal');
+            const form = document.getElementById('edit-modal-form');
+            form.action = `/miners/edit/${minerId}`;
+            document.getElementById('edit_miner_id').value = currentMinerId;
+            document.getElementById('edit_chipset').value = currentChipset;
+            document.getElementById('edit_nerdminer_vrs').value = currentVersion;
+            document.getElementById('edit_location_notes').value = currentLocationNotes;
+            modal.classList.remove('hidden');
+        }
+
+        function closeEditModal() {
+            document.getElementById('edit-modal').classList.add('hidden');
+        }
+
         function openDeleteModal(deleteUrl, itemType) {
             const modal = document.getElementById('delete-modal');
             const form = document.getElementById('delete-modal-form');
@@ -266,7 +389,6 @@
             form.action = deleteUrl;
             text.textContent = `Are you sure you want to delete ${itemType}? This action cannot be undone.`;
             modal.classList.remove('hidden');
-
         }
 
         function closeDeleteModal() {
@@ -281,6 +403,7 @@
         const textInput = document.getElementById('text_user_address');
 
         function updateUserTypeVisibility() {
+            if(!dynamicRadio) return; // In case these elements don't exist on the page
             if (dynamicRadio.checked) {
                 dynamicSection.classList.remove('hidden');
                 textSection.classList.add('hidden');
@@ -294,8 +417,8 @@
             }
         }
         
-        dynamicRadio.addEventListener('change', updateUserTypeVisibility);
-        textRadio.addEventListener('change', updateUserTypeVisibility);
+        if(dynamicRadio) dynamicRadio.addEventListener('change', updateUserTypeVisibility);
+        if(textRadio) textRadio.addEventListener('change', updateUserTypeVisibility);
 
         document.addEventListener('DOMContentLoaded', function() {
             const hash = window.location.hash.substring(1);
@@ -305,16 +428,17 @@
                 showPane('general');
             }
             updateUserTypeVisibility();
+            fetchDiscoveredDevices();
+            setInterval(fetchDiscoveredDevices, 5000);
             
-            // NEW: Auto-hide flash messages
             const flashMessages = document.querySelectorAll('[id^="flash-message-"]');
             flashMessages.forEach(function(message) {
                 setTimeout(function() {
                     message.style.opacity = '0';
                     setTimeout(function() {
                         message.style.display = 'none';
-                    }, 500); // Wait for fade out to complete
-                }, 5000); // 5 seconds
+                    }, 500);
+                }, 5000);
             });
         });
     </script>

@@ -1,6 +1,6 @@
 # data_ingestor.py
-# V.0.0.0.3
-# Description: Handles serial data collection from miners and writes to the database.
+# Version: 0.0.0.4
+# Description: Monitors serial ports for configured miners and logs their output.
 
 import serial
 import sqlite3
@@ -33,14 +33,16 @@ def get_db_connection():
 def get_configured_miners(conn):
     """Fetches the list of configured miners from the database."""
     cursor = conn.cursor()
-    cursor.execute("SELECT id, miner_id, tty_symlink FROM miners WHERE tty_symlink IS NOT NULL;")
+    # MODIFIED: Select 'dev_path' instead of 'tty_symlink'
+    cursor.execute("SELECT id, miner_id, dev_path FROM miners WHERE dev_path IS NOT NULL;")
     miners = cursor.fetchall()
-    return {miner['tty_symlink']: {'miner_id': miner['miner_id'], 'db_id': miner['id']} for miner in miners}
+    # MODIFIED: Use dev_path as the key
+    return {miner['dev_path']: {'miner_id': miner['miner_id'], 'db_id': miner['id']} for miner in miners}
 
 # --- Worker Threads ---
 
-def monitor_miner(tty_symlink, miner_info):
-# ... existing code ...
+def monitor_miner(dev_path, miner_info):
+    """A thread that monitors a serial port and puts all data/status into a queue."""
     thread_name = threading.current_thread().name
     miner_db_id = miner_info['db_id']
     log_pattern = re.compile(r'>>>\s*(?P<key>.+?):\s*(?P<value>.+)')
@@ -48,8 +50,9 @@ def monitor_miner(tty_symlink, miner_info):
     while True:
         ser = None
         try:
-            ser = serial.Serial(f'/dev/{tty_symlink}', 115200, timeout=1)
-            print(f"[{thread_name}] Successfully connected to {tty_symlink}.")
+            # MODIFIED: Use dev_path directly, as it's the full path
+            ser = serial.Serial(dev_path, 115200, timeout=1)
+            print(f"[{thread_name}] Successfully connected to {dev_path}.")
             data_queue.put(('STATUS', miner_db_id, 'online'))
 
             while ser.is_open:
@@ -64,14 +67,14 @@ def monitor_miner(tty_symlink, miner_info):
                             data = match.groupdict()
                             data_queue.put(('LOG', miner_db_id, data['key'], data['value']))
                 except serial.SerialException:
-                    print(f"[{thread_name}] Device {tty_symlink} disconnected. Retrying...")
+                    print(f"[{thread_name}] Device {dev_path} disconnected. Retrying...")
                     break
                 except Exception as e:
-                    print(f"[{thread_name}] Error reading from {tty_symlink}: {e}")
+                    print(f"[{thread_name}] Error reading from {dev_path}: {e}")
                     time.sleep(1)
 
         except serial.SerialException as e:
-            print(f"[{thread_name}] Could not open port {tty_symlink}: {e}. Retrying in 10 seconds...")
+            print(f"[{thread_name}] Could not open port {dev_path}: {e}. Retrying in 10 seconds...")
             data_queue.put(('STATUS', miner_db_id, 'offline'))
         finally:
             if ser and ser.is_open:
@@ -82,41 +85,52 @@ def monitor_miner(tty_symlink, miner_info):
 def database_writer():
     """A thread that pulls data from the queue and is the ONLY writer to the database."""
     thread_name = threading.current_thread().name
+    batch = []
+    last_commit_time = time.time()
+
     while True:
         try:
-            # --- MEMORY LEAK FIX ---
-            # The 'with' statement is now INSIDE the loop.
-            # This ensures the connection is created and, crucially,
-            # closed cleanly on every iteration, even if errors occur.
-            with get_db_connection() as conn:
-                while not data_queue.empty(): # Process all items currently in queue
-                    item = data_queue.get()
-                    now_iso = datetime.now(UTC).isoformat()
+            # Fetch items from the queue
+            item = data_queue.get(timeout=1) # Use a timeout to allow periodic commits
+            batch.append(item)
+            data_queue.task_done()
+        except queue.Empty:
+            # If the queue is empty, we might still have a batch to process
+            pass
 
-                    with conn: # Use a transaction for the block
-                        if item[0] == 'LOG':
-                            _, miner_id, log_key, log_value = item
-                            conn.execute("""
-                                INSERT INTO miner_logs (miner_id, log_key, log_value, created_at)
-                                VALUES (?, ?, ?, ?);
-                            """, (miner_id, log_key, log_value, now_iso))
-                            conn.execute("UPDATE miners SET last_seen = ? WHERE id = ?;", (now_iso, miner_id))
+        # Commit the batch if it's large enough or if enough time has passed
+        if batch and (len(batch) >= 20 or time.time() - last_commit_time > 2.0):
+            try:
+                with get_db_connection() as conn:
+                    with conn: # Start a transaction
+                        for item in batch:
+                            item_type = item[0]
+                            now_iso = datetime.now(UTC).isoformat()
 
-                        elif item[0] == 'STATUS':
-                            _, miner_id, new_status = item
-                            conn.execute("UPDATE miners SET status = ?, last_seen = ? WHERE id = ?;", (new_status, now_iso, miner_id))
-                    
-                    data_queue.task_done()
-            # -------------------------
-            time.sleep(1) # Small sleep to prevent tight-looping if queue is empty
+                            if item_type == 'LOG':
+                                _, miner_id, log_key, log_value = item
+                                conn.execute("""
+                                    INSERT INTO miner_logs (miner_id, log_key, log_value, created_at)
+                                    VALUES (?, ?, ?, ?);
+                                """, (miner_id, log_key, log_value, now_iso))
+                                conn.execute("UPDATE miners SET last_seen = ? WHERE id = ?;", (now_iso, miner_id))
 
-        except Exception as e:
-            print(f"[{thread_name}] Error writing to database: {e}. Retrying in 5s...")
-            time.sleep(5)
+                            elif item_type == 'STATUS':
+                                _, miner_id, new_status = item
+                                conn.execute("UPDATE miners SET status = ?, last_seen = ? WHERE id = ?;", (new_status, now_iso, miner_id))
+                
+                if DEBUG_MODE:
+                    print(f"[{thread_name}] Committed {len(batch)} items to database.")
+                batch = [] # Clear the batch
+                last_commit_time = time.time()
+
+            except Exception as e:
+                print(f"[{thread_name}] Error writing batch to database: {e}. Items will be retried.")
+                time.sleep(5)
 
 
 def cleanup_logs():
-# ... existing code ...
+    """Periodically cleans up old logs from the miner_logs table."""
     thread_name = threading.current_thread().name
     while True:
         time.sleep(CLEANUP_INTERVAL_MINUTES * 60)
@@ -146,8 +160,8 @@ if __name__ == "__main__":
         miners_to_monitor = get_configured_miners(conn)
         print(f"Found {len(miners_to_monitor)} configured miners to monitor.")
 
-    for tty, info in miners_to_monitor.items():
-        thread = threading.Thread(target=monitor_miner, args=(tty, info), name=f"Miner-{info['miner_id']}", daemon=True)
+    for dev_path, info in miners_to_monitor.items():
+        thread = threading.Thread(target=monitor_miner, args=(dev_path, info), name=f"Miner-{info['miner_id']}", daemon=True)
         thread.start()
         time.sleep(0.1)
 
@@ -156,3 +170,4 @@ if __name__ == "__main__":
             time.sleep(60)
     except KeyboardInterrupt:
         print("\nShutting down ingestor...")
+

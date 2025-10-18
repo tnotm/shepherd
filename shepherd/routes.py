@@ -1,17 +1,17 @@
 # shepherd/routes.py
-# V.0.0.1.3
+# V.0.0.1.8
 # Description: Main routing file for the Shepherd Flask application.
 
 import sqlite3
 import os
-import csv
 import io
+import csv
 import json
 import socket
 import subprocess
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from .database import get_db_connection
-from datetime import datetime
+from datetime import datetime, UTC
 
 try:
     import psutil
@@ -24,24 +24,20 @@ bp = Blueprint('main', __name__)
 DATA_DIR = os.path.expanduser('~/shepherd_data')
 PRICE_CACHE_FILE = os.path.join(DATA_DIR, 'btc_price.json')
 SHEPHERD_SERVICES = [
-    'shepherd-app.service',
     'shepherd-ingestor.service',
     'shepherd-summarizer.service',
-    'shepherd-pricer.service'
+    'shepherd-pricer.service',
+    'shepherd-device-discovery.service'
 ]
 
 def get_btc_price_data():
-    """Reads the cached BTC price data, ensuring numeric types."""
+    """Reads the cached BTC price data."""
     try:
         with open(PRICE_CACHE_FILE, 'r') as f:
             data = json.load(f)
-            # Ensure values are numeric, default to 0 if not
-            price = data.get("price_usd", 0)
-            change = data.get("change_24h", 0)
-            return {
-                "price_usd": float(price) if price is not None else 0,
-                "change_24h": float(change) if change is not None else 0.0
-            }
+            price = float(data.get("price_usd", 0) or 0)
+            change = float(data.get("change_24h", 0) or 0)
+            return {"price_usd": price, "change_24h": change}
     except (FileNotFoundError, json.JSONDecodeError, TypeError):
         return {"price_usd": 0, "change_24h": 0.0}
 
@@ -57,68 +53,54 @@ def format_uptime(seconds):
     return " ".join(parts) if parts else f"{int(s)}s"
 
 def get_service_statuses():
-    """Checks the status of predefined systemd services."""
+    """Checks the status of all shepherd-related systemd services."""
     statuses = {}
     for service in SHEPHERD_SERVICES:
         try:
             result = subprocess.run(['systemctl', 'is-active', service], capture_output=True, text=True)
             status = result.stdout.strip()
             statuses[service] = status
-        except FileNotFoundError:
-            statuses[service] = 'not_found'
         except Exception:
             statuses[service] = 'error'
     return statuses
 
-# NEW: Unified private function to get all herd data
 def _get_herd_data():
-    """Private helper to fetch and structure all data for the API."""
+    """Internal function to gather all data for the unified API."""
     with get_db_connection() as conn:
-        # Get individual miner details
-        miner_query = """
-            SELECT m.id, m.miner_id, m.nerdminer_vrs, m.status, s."KH/s", s.Temperature,
-                   s.Shares, s."Best difficulty", s."Block templates", s.last_updated
-            FROM miners m
-            LEFT JOIN miner_summary s ON m.id = s.miner_id
-            ORDER BY m.miner_id;
-        """
-        miners_list = [dict(row) for row in conn.execute(miner_query).fetchall()]
+        miners_query = "SELECT m.*, s.* FROM miners m LEFT JOIN miner_summary s ON m.id = s.miner_id ORDER BY m.miner_id;"
+        miners = conn.execute(miners_query).fetchall()
 
-        # Calculate herd summary stats from the detailed list
-        total_miners = len(miners_list)
-        online_miners = sum(1 for m in miners_list if m['status'] == 'online')
-        total_hash_khs = sum(float(m['KH/s'] or 0) for m in miners_list)
-        total_shares = sum(int(m['Shares'] or 0) for m in miners_list)
-        total_block_templates = sum(int(m['Block templates'] or 0) for m in miners_list)
-        best_difficulty = max([float(m['Best difficulty'] or 0) for m in miners_list] or [0])
-
-        herd_stats = {
-            "total_miners": total_miners,
-            "online_miners": online_miners,
-            "total_hash_khs": total_hash_khs,
-            "total_shares": total_shares,
-            "total_block_templates": total_block_templates,
-            "best_difficulty": best_difficulty
-        }
-
+        total_miners = len(miners)
+        online_miners = sum(1 for m in miners if m['status'] == 'online')
+        total_hash_khs = sum(float(m['KH/s'] or 0) for m in miners)
+        total_shares = sum(int(m['Shares'] or 0) for m in miners)
+        total_block_templates = sum(int(m['Block templates'] or 0) for m in miners)
+        best_difficulty = max([float(m['Best difficulty'] or 0) for m in miners] or [0])
+        
         btc_price_data = get_btc_price_data()
 
+        miners_list = [dict(row) for row in miners]
+
         return {
-            "herd_stats": herd_stats,
+            "herd_stats": {
+                "total_miners": total_miners,
+                "online_miners": online_miners,
+                "total_hash_khs": total_hash_khs,
+                "total_shares": total_shares,
+                "total_block_templates": total_block_templates,
+                "best_difficulty": best_difficulty
+            },
             "btc_price_data": btc_price_data,
             "miners_list": miners_list
         }
 
-# --- Main Application Routes ---
-
+# --- Main & Dashboard Routes ---
 @bp.route('/')
 def index():
-    # Page now renders statically; data is fetched by JavaScript.
     return render_template('index.html')
 
-@bp.route('/kiosk')
+@bp.route('/kiosk') 
 def kiosk():
-    # Page now renders statically
     return render_template('kiosk.html')
 
 @bp.route('/dashboards')
@@ -127,30 +109,26 @@ def dashboards():
 
 @bp.route('/dash/health')
 def dash_health():
-    # Page now renders statically
     return render_template('dash_health.html')
 
 @bp.route('/dash/nerdminer')
 def dash_nerdminer():
-    # This is placeholder, needs real data source
+     # This dashboard is mostly decorative, but we can feed it some live data
+    data = _get_herd_data()
     stats = {
-        'current_block': '812345', 'time_since_block': '5m 12s',
-        'hash_rate': '78.45', 'difficulty': '52.3T', 'btc_price': '68,123',
-        'market_cap': '1.34T', 'sats_per_dollar': '1,468'
+        'current_block': 'N/A', # This data isn't easily available
+        'time_since_block': 'N/A',
+        'hash_rate': f"{data['herd_stats']['total_hash_khs']:.2f}",
+        'difficulty': f"{data['herd_stats']['best_difficulty']:.2f}",
+        'btc_price': f"${data['btc_price_data']['price_usd']:,.2f}",
+        'sats_per_dollar': f"{100_000_000 / data['btc_price_data']['price_usd'] if data['btc_price_data']['price_usd'] > 0 else 0:,.0f}",
+        'market_cap': 'N/A'
     }
     return render_template('dash_nerdminer.html', stats=stats)
-
+    
 @bp.route('/dash/matrix')
 def dash_matrix():
-    # Page now renders statically
     return render_template('dash_matrix.html')
-
-# --- NEW: UNIFIED API ENDPOINT ---
-@bp.route('/api/herd_data')
-def api_herd_data():
-    """The single endpoint for all dynamic dashboard data."""
-    data = _get_herd_data()
-    return jsonify(data)
 
 # --- Farm Detail Routes ---
 @bp.route('/details')
@@ -182,11 +160,12 @@ def details_system():
             stats['uptime'] = 'N/A'
         try:
             temps = psutil.sensors_temperatures()
-            if 'cpu_thermal' in temps:
-                stats['cpu_temp'] = f"{temps['cpu_thermal'][0].current:.1f}°C"
+            cpu_temp_key = next((key for key in temps if 'core' in key or 'cpu' in key), None)
+            if cpu_temp_key and temps[cpu_temp_key]:
+                 stats['cpu_temp'] = f"{temps[cpu_temp_key][0].current:.1f}°C"
             else:
                 stats['cpu_temp'] = 'N/A'
-        except (AttributeError, IndexError, KeyError):
+        except (AttributeError, IndexError, KeyError, StopIteration):
              stats['cpu_temp'] = 'N/A'
     return render_template('details_system.html', stats=stats)
 
@@ -207,30 +186,8 @@ def config():
         miners = conn.execute("SELECT * FROM miners ORDER BY miner_id;").fetchall()
         pools = conn.execute("SELECT * FROM pools ORDER BY pool_name;").fetchall()
         addresses = conn.execute("SELECT * FROM coin_addresses ORDER BY coin_ticker;").fetchall()
-    services = get_service_statuses()
+        services = get_service_statuses()
     return render_template('config.html', miners=miners, pools=pools, addresses=addresses, services=services)
-
-# ... (all other config routes remain the same) ...
-@bp.route('/miners/upload', methods=['POST'])
-def upload_miners():
-    if 'miner_file' not in request.files:
-        flash('No file part', 'error'); return redirect(url_for('main.config') + '#miners')
-    file = request.files['miner_file']
-    if file.filename == '':
-        flash('No selected file', 'error'); return redirect(url_for('main.config') + '#miners')
-    if file and file.filename.endswith('.csv'):
-        try:
-            stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
-            csv_reader = csv.DictReader(stream)
-            miners_to_upsert = [row for row in csv_reader]
-            with get_db_connection() as conn:
-                for miner in miners_to_upsert:
-                     conn.execute('INSERT INTO miners (miner_id, chipset, attrs_idVendor, attrs_idProduct, attrs_serial, tty_symlink, nerdminer_rom, nerdminer_vrs) VALUES (:miner_id, :chipset, :attrs_idVendor, :attrs_idProduct, :attrs_serial, :tty_symlink, :nerdminer_rom, :nerdminer_vrs) ON CONFLICT(miner_id) DO UPDATE SET chipset=excluded.chipset, attrs_idVendor=excluded.attrs_idVendor, attrs_idProduct=excluded.attrs_idProduct, attrs_serial=excluded.attrs_serial, tty_symlink=excluded.tty_symlink, nerdminer_rom=excluded.nerdminer_rom, nerdminer_vrs=excluded.nerdminer_vrs;', miner)
-            flash(f'Successfully processed {len(miners_to_upsert)} miners.', 'success')
-        except Exception as e:
-            flash(f'An error occurred: {e}', 'error')
-    return redirect(url_for('main.config') + '#miners')
-
 
 @bp.route('/miners/delete/<int:miner_id>', methods=['POST'])
 def delete_miner(miner_id):
@@ -238,21 +195,85 @@ def delete_miner(miner_id):
         conn.execute("DELETE FROM miners WHERE id = ?;", (miner_id,))
     flash('Miner successfully deleted.', 'success')
     return redirect(url_for('main.config') + '#miners')
+    
+@bp.route('/miners/edit/<int:miner_id>', methods=['POST'])
+def edit_miner(miner_id):
+    form_data = request.form
+    new_miner_id = form_data.get('miner_id').strip()
+    new_chipset = form_data.get('chipset').strip()
+    new_version = form_data.get('nerdminer_vrs').strip()
+    new_location_notes = form_data.get('location_notes').strip()
+
+    if not new_miner_id:
+        flash('Miner ID cannot be empty.', 'error')
+        return redirect(url_for('main.config') + '#miners')
+
+    with get_db_connection() as conn:
+        existing_miner = conn.execute(
+            "SELECT id FROM miners WHERE miner_id = ? AND id != ?;",
+            (new_miner_id, miner_id)
+        ).fetchone()
+
+        if existing_miner:
+            flash(f"Miner ID '{new_miner_id}' is already in use.", 'error')
+            return redirect(url_for('main.config') + '#miners')
+
+        conn.execute("""
+            UPDATE miners 
+            SET miner_id = ?, chipset = ?, nerdminer_vrs = ?, location_notes = ?
+            WHERE id = ?;
+        """, (new_miner_id, new_chipset, new_version, new_location_notes, miner_id))
+
+    flash(f"Successfully updated miner '{new_miner_id}'.", 'success')
+    return redirect(url_for('main.config') + '#miners')
+    
+@bp.route('/miners/onboard', methods=['POST'])
+def onboard_miner():
+    unconfigured_id = request.form.get('unconfigured_id')
+    new_miner_id = request.form.get('miner_id').strip()
+
+    if not unconfigured_id or not new_miner_id:
+        flash("Missing required information for onboarding.", 'error')
+        return redirect(url_for('main.config') + '#miners')
+
+    with get_db_connection() as conn:
+        with conn: 
+            device = conn.execute("SELECT * FROM unconfigured_devices WHERE id = ?;", (unconfigured_id,)).fetchone()
+            if not device:
+                flash("Device not found.", 'error')
+                return redirect(url_for('main.config') + '#miners')
+
+            existing_miner = conn.execute("SELECT id FROM miners WHERE miner_id = ?;", (new_miner_id,)).fetchone()
+            if existing_miner:
+                flash(f"Miner ID '{new_miner_id}' is already in use.", 'error')
+                return redirect(url_for('main.config') + '#miners')
+
+            conn.execute("""
+                INSERT INTO miners (miner_id, dev_path, port_path, attrs_idVendor, attrs_idProduct, attrs_serial)
+                VALUES (?, ?, ?, ?, ?, ?);
+            """, (
+                new_miner_id,
+                device['dev_path'],
+                device['port_path'],
+                device['vendor_id'],
+                device['product_id'],
+                device['serial_number']
+            ))
+
+            conn.execute("DELETE FROM unconfigured_devices WHERE id = ?;", (unconfigured_id,))
+
+    flash(f"Successfully onboarded '{new_miner_id}'. A restart of the ingestor service may be required.", 'success')
+    return redirect(url_for('main.config') + '#miners')
 
 @bp.route('/pools/add', methods=['POST'])
 def add_pool():
     form_data = request.form
-    user_type = form_data.get('user_type') 
+    user_type = form_data.get('user_type')
     pool_user = form_data.get('dynamic_user_address') if user_type == 'dynamic' else form_data.get('text_user_address')
-
-    if user_type == 'dynamic' and pool_user:
-        final_user = f"{pool_user}.{{miner_id}}"
-    else:
-        final_user = pool_user
-
+    
     with get_db_connection() as conn:
         conn.execute("INSERT INTO pools (pool_name, pool_url, pool_port, pool_user, pool_pass) VALUES (?, ?, ?, ?, ?);", 
-                     (form_data['pool_name'], form_data['pool_url'], form_data['pool_port'], final_user, form_data.get('pool_pass', 'x')))
+                     (form_data['pool_name'], form_data['pool_url'], form_data['pool_port'], pool_user, form_data.get('pool_pass', 'x')))
     flash('New pool successfully added.', 'success')
     return redirect(url_for('main.config') + '#pools')
 
@@ -286,52 +307,55 @@ def delete_address(address_id):
         conn.execute("DELETE FROM coin_addresses WHERE id = ?;", (address_id,))
     flash('Address successfully deleted.', 'success')
     return redirect(url_for('main.config') + '#addresses')
-
-@bp.route('/dev/service/restart/<service_name>', methods=['POST'])
-def restart_service(service_name):
-    # Security check: ensure the service is in our allowed list
-    if service_name not in SHEPHERD_SERVICES:
-        flash(f"Error: '{service_name}' is not a valid service.", 'error')
-        return redirect(url_for('main.config') + '#developer')
     
-    try:
-        result = subprocess.run(['sudo', 'systemctl', 'restart', service_name], check=True, capture_output=True, text=True)
-        flash(f"Successfully sent restart command to {service_name}.", 'success')
-    except subprocess.CalledProcessError as e:
-        flash(f"Error restarting {service_name}: {e.stderr}", 'error')
-    except FileNotFoundError:
-        flash("Error: 'sudo' or 'systemctl' command not found. This feature requires a systemd-based Linux environment.", 'error')
-    except Exception as e:
-        flash(f"An unexpected error occurred: {e}", 'error')
-        
+# --- Service Management Routes ---
+@bp.route('/service/restart/<service_name>', methods=['POST'])
+def restart_service(service_name):
+    if service_name in SHEPHERD_SERVICES:
+        try:
+            subprocess.run(['sudo', 'systemctl', 'restart', service_name], check=True)
+            flash(f"Successfully restarted {service_name}.", 'success')
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            flash(f"Failed to restart {service_name}: {e}", 'error')
+    else:
+        flash("Invalid service name.", 'error')
     return redirect(url_for('main.config') + '#developer')
 
-@bp.route('/dev/service/restart_all', methods=['POST'])
+@bp.route('/service/restart/all', methods=['POST'])
 def restart_all_services():
     success = True
     for service in SHEPHERD_SERVICES:
         try:
-            subprocess.run(['sudo', 'systemctl', 'restart', service], check=True, capture_output=True, text=True)
-        except Exception:
+            subprocess.run(['sudo', 'systemctl', 'restart', service], check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            flash(f"Failed to restart {service}.", 'error')
             success = False
-            flash(f"Failed to restart {service}. See system logs for details.", 'error')
-    
     if success:
-        flash("Successfully sent restart command to all services.", 'success')
-    
+        flash("Successfully restarted all services.", 'success')
     return redirect(url_for('main.config') + '#developer')
-
 
 # --- Diagnostic Routes ---
 @bp.route('/raw_logs')
 def raw_logs():
     with get_db_connection() as conn:
-        logs = conn.execute("SELECT l.created_at, m.miner_id, l.log_key, l.log_value FROM miner_logs l JOIN miners m ON l.miner_id = m.id ORDER BY l.id DESC LIMIT 30").fetchall()
+        logs = conn.execute("SELECT l.created_at, m.miner_id, l.log_key, l.log_value FROM miner_logs l JOIN miners m ON l.miner_id = m.id ORDER BY l.id DESC LIMIT 100").fetchall()
     return render_template('raw_logs.html', logs=logs)
 
 @bp.route('/summary')
 def summary():
+    return render_template('summary.html')
+    
+# --- API Routes ---
+@bp.route('/api/herd_data')
+def api_herd_data():
+    """The single, unified API endpoint for all dashboard data."""
+    data = _get_herd_data()
+    return jsonify(data)
+
+@bp.route('/api/unconfigured_devices')
+def api_unconfigured_devices():
+    """API endpoint to get the list of new, unconfigured devices."""
     with get_db_connection() as conn:
-        summary_data = conn.execute("SELECT m.miner_id, s.* FROM miner_summary s JOIN miners m ON s.miner_id = m.id ORDER BY m.miner_id").fetchall()
-    return render_template('summary.html', summary_data=summary_data)
+        devices = conn.execute("SELECT * FROM unconfigured_devices ORDER BY discovered_at DESC;").fetchall()
+        return jsonify([dict(row) for row in devices])
 
