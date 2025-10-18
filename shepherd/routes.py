@@ -1,4 +1,4 @@
-# shepherd/routes.py -- V.0.0.0.9
+# shepherd/routes.py -- V.0.0.0.7
 import sqlite3
 import os
 import csv
@@ -50,14 +50,13 @@ def index():
         online_miners = sum(1 for m in miners if m['status'] == 'online')
         total_hash_khs = sum(float(m['KH/s'] or 0) for m in miners)
         total_shares = sum(int(m['Shares'] or 0) for m in miners)
-        # ENHANCEMENT: Calculate total block templates for the header
         total_block_templates = sum(int(m['Block templates'] or 0) for m in miners)
         best_difficulty = max([float(m['Best difficulty'] or 0) for m in miners] or [0])
         herd_stats = {
             "total_miners": total_miners, "online_miners": online_miners,
             "total_hash_khs": total_hash_khs, "total_shares": total_shares,
             "best_difficulty": best_difficulty,
-            "total_block_templates": total_block_templates, # ENHANCEMENT: Added to dictionary
+            "total_block_templates": total_block_templates,
             "btc_price_data": get_btc_price_data()
         }
     return render_template('index.html', miners=miners, herd_stats=herd_stats)
@@ -89,7 +88,6 @@ def dashboards():
 
 @bp.route('/dash/health')
 def dash_health():
-    # ... (code for this route is correct)
     with get_db_connection() as conn:
         query = "SELECT m.id, m.miner_id, m.status, s.'KH/s', s.Shares, s.'Block templates' FROM miners m LEFT JOIN miner_summary s ON m.id = s.miner_id ORDER BY m.miner_id;"
         miners = conn.execute(query).fetchall()
@@ -122,12 +120,16 @@ def dash_matrix():
         query = "SELECT m.status, s.* FROM miners m LEFT JOIN miner_summary s ON m.id = s.miner_id;"
         miners = conn.execute(query).fetchall()
         
+        total_miners = len(miners)
+        online_miners = sum(1 for m in miners if m['status'] == 'online')
         total_hash_khs = sum(float(m['KH/s'] or 0) for m in miners)
         total_shares = sum(int(m['Shares'] or 0) for m in miners)
         total_block_templates = sum(int(m['Block templates'] or 0) for m in miners)
         btc_data = get_btc_price_data()
         
         herd_stats = {
+            "total_miners": total_miners,
+            "online_miners": online_miners,
             "total_hash_khs": total_hash_khs,
             "total_shares": total_shares,
             "total_block_templates": total_block_templates,
@@ -142,7 +144,6 @@ def details():
 
 @bp.route('/details/system')
 def details_system():
-    # ... (code for this route is correct)
     stats = {'psutil_installed': bool(psutil)}
     if psutil:
         stats['hostname'] = socket.gethostname()
@@ -176,7 +177,6 @@ def details_system():
 
 @bp.route('/details/miner/<int:miner_id>')
 def details_miner(miner_id):
-    # ... (code for this route is correct)
     with get_db_connection() as conn:
         query = "SELECT m.*, s.* FROM miners m LEFT JOIN miner_summary s ON m.id = s.miner_id WHERE m.id = ?;"
         miner = conn.execute(query, (miner_id,)).fetchone()
@@ -188,7 +188,6 @@ def details_miner(miner_id):
 # --- Config & Management Routes ---
 @bp.route('/config')
 def config():
-    # ... (code for this route is correct)
     with get_db_connection() as conn:
         miners = conn.execute("SELECT * FROM miners ORDER BY miner_id;").fetchall()
         pools = conn.execute("SELECT * FROM pools ORDER BY pool_name;").fetchall()

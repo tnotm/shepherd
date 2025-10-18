@@ -1,58 +1,76 @@
+<!-- V.0.0.1.8 -->
 <!DOCTYPE html>
 <html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>The Digital Stream</title>
+    <title>The Shepherd - Digital Stream</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        html, body { overflow: hidden; background: #000; }
-        #matrix-canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
-        }
-        #content-overlay {
-            position: relative;
-            z-index: 2;
-        }
+        html, body { overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        .font-numeric { font-family: Verdana, sans-serif; }
     </style>
 </head>
-<body class="font-mono" onclick="toggleMenu(event)">
-
+<body class="bg-black text-gray-200 font-mono h-full" onclick="toggleMenu(event)">
     <canvas id="matrix-canvas"></canvas>
 
-    <div id="content-overlay" class="w-full h-full p-8 flex flex-col justify-center gap-8">
-        <!-- Top Row Stats -->
-        <div class="grid grid-cols-2 gap-8">
-            <div id="btc-price-panel" class="bg-black/70 rounded-lg p-4 backdrop-blur-sm">
-                <h2 class="text-sm uppercase text-green-400">BTC / USD</h2>
-                <p class="text-4xl font-bold text-white">${{ "%.2f"|format(herd_stats.btc_price_data.price_usd) if herd_stats.btc_price_data.price_usd != 'N/A' else 'N/A' }}</p>
-                <p class="text-lg {% if herd_stats.btc_price_data.change_24h >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
-                    {{ "%.2f"|format(herd_stats.btc_price_data.change_24h) }}% (24h)
+    <!-- Overlay Content -->
+    <div class="absolute inset-0 flex flex-col justify-between p-4">
+        
+        <!-- Top Bar: BTC Price -->
+        <div class="bg-black/50 p-3 rounded-md text-left">
+            <p class="text-sm text-green-400 uppercase font-bold">BTC Price</p>
+            <div class="flex justify-between items-center mt-1">
+                <p class="text-7xl font-semibold font-numeric">
+                    ${{ "{:,.0f}".format(herd_stats.btc_price_data.price_usd|float) if herd_stats.btc_price_data.price_usd != 'N/A' else 'N/A' }}
                 </p>
-            </div>
-            <div id="hash-rate-panel" class="bg-black/70 rounded-lg p-4 text-right backdrop-blur-sm">
-                <h2 class="text-sm uppercase text-green-400">Herd Hashrate</h2>
-                <p class="text-4xl font-bold text-white">{{ "%.2f"|format(herd_stats.total_hash_khs) }}</p>
-                <p class="text-lg text-gray-400">KH/s</p>
+                <div class="flex flex-col items-center">
+                    {% if herd_stats.btc_price_data.change_24h >= 0 %}
+                        <svg class="h-5 w-5 text-green-500" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M10 4l-6 8h12l-6-8z" />
+                        </svg>
+                        <p class="text-xl font-semibold text-green-500 mt-1 font-numeric">
+                            {{ "%.2f"|format(herd_stats.btc_price_data.change_24h) }}%
+                        </p>
+                    {% else %}
+                        <p class="text-xl font-semibold text-red-500 mb-1 font-numeric">
+                            {{ "%.2f"|format(herd_stats.btc_price_data.change_24h) }}%
+                        </p>
+                        <svg class="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M10 16l6-8H4l6 8z" />
+                        </svg>
+                    {% endif %}
+                </div>
             </div>
         </div>
 
-        <!-- Bottom Row Stats -->
-        <div class="grid grid-cols-2 gap-8">
-            <div id="shares-panel" class="bg-black/70 rounded-lg p-4 backdrop-blur-sm">
-                <h2 class="text-sm uppercase text-green-400">Total Shares</h2>
-                <p class="text-4xl font-bold text-white">{{ herd_stats.total_shares }}</p>
+        <!-- Middle Stats -->
+        <div class="grid grid-cols-4 gap-2 text-center">
+            <div class="bg-black/50 p-2 rounded-md">
+                <p class="text-xs text-green-400 uppercase font-bold">Miners</p>
+                <p class="text-2xl font-semibold font-numeric">{{ herd_stats.online_miners }}/{{ herd_stats.total_miners }}</p>
             </div>
-            <div id="templates-panel" class="bg-black/70 rounded-lg p-4 text-right backdrop-blur-sm">
-                <h2 class="text-sm uppercase text-green-400">Block Templates</h2>
-                <p class="text-4xl font-bold text-white">{{ herd_stats.total_block_templates }}</p>
+            <div class="bg-black/50 p-2 rounded-md">
+                <p class="text-xs text-green-400 uppercase font-bold">Herd Hash</p>
+                <p class="text-2xl font-semibold font-numeric">{{ "%.2f"|format(herd_stats.total_hash_khs) }}</p>
+            </div>
+            <div class="bg-black/50 p-2 rounded-md">
+                <p class="text-xs text-green-400 uppercase font-bold">Shares</p>
+                <p class="text-2xl font-semibold font-numeric">{{ herd_stats.total_shares }}</p>
+            </div>
+            <div class="bg-black/50 p-2 rounded-md">
+                <p class="text-xs text-green-400 uppercase font-bold">Templates</p>
+                <p class="text-2xl font-semibold font-numeric">{{ herd_stats.total_block_templates }}</p>
             </div>
         </div>
+
+        <!-- Bottom Bar: Clock -->
+        <div class="bg-black/50 p-3 rounded-md text-center">
+            <p id="clock-time" class="text-5xl font-semibold font-numeric"></p>
+            <p id="clock-date" class="text-xl font-semibold text-gray-400 font-numeric"></p>
+        </div>
+
     </div>
 
     {% include '_navigation_menu.html' %}
@@ -64,30 +82,24 @@
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        const katakana = 'アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブプエェケセテネヘメレヱゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッン';
+        const katakana = 'アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブヅプエェケセテネヘメレヱゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッン';
         const latin = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
         const nums = '0123456789';
         const alphabet = katakana + latin + nums;
 
         const fontSize = 16;
-        const columns = Math.floor(canvas.width / fontSize);
-
+        const columns = canvas.width / fontSize;
         const rainDrops = [];
-        for (let x = 0; x < columns; x++) {
-            rainDrops[x] = 1;
-        }
+        for (let x = 0; x < columns; x++) { rainDrops[x] = 1; }
 
-        const draw = () => {
+        const drawMatrix = () => {
             ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            ctx.fillStyle = '#39FF14'; // Neon Green color for the rain
+            ctx.fillStyle = '#0F0';
             ctx.font = fontSize + 'px monospace';
-
             for (let i = 0; i < rainDrops.length; i++) {
                 const text = alphabet.charAt(Math.floor(Math.random() * alphabet.length));
                 ctx.fillText(text, i * fontSize, rainDrops[i] * fontSize);
-
                 if (rainDrops[i] * fontSize > canvas.height && Math.random() > 0.975) {
                     rainDrops[i] = 0;
                 }
@@ -95,14 +107,39 @@
             }
         };
 
-        setInterval(draw, 30);
+        function updateClock() {
+            const timeElement = document.getElementById('clock-time');
+            const dateElement = document.getElementById('clock-date');
+            if (!timeElement || !dateElement) return;
+            const now = new Date();
+            const timeString = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            const dateString = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+            timeElement.textContent = timeString;
+            dateElement.textContent = dateString;
+        }
+
+        setInterval(drawMatrix, 30);
+        setInterval(updateClock, 1000);
+        updateClock();
 
         window.addEventListener('resize', () => {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            // Recalculate columns on resize could be added here if needed
         });
+        
+        // This function is included from _navigation_menu.html but is here for clarity
+        // It's triggered by the onclick event on the body
+        function toggleMenu(event) {
+            // Stop the click from propagating to the body if a link is clicked
+            if (event && event.target.closest('a')) {
+                return;
+            }
+            event.stopPropagation();
+            document.getElementById('nav-menu-overlay').classList.toggle('hidden');
+            document.getElementById('nav-menu-panel').classList.toggle('-translate-x-full');
+        }
     </script>
+
 </body>
 </html>
 
