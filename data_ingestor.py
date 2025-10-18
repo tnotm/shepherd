@@ -1,3 +1,7 @@
+# data_ingestor.py
+# V.0.0.0.3
+# Description: Handles serial data collection from miners and writes to the database.
+
 import serial
 import sqlite3
 import time
@@ -9,8 +13,6 @@ from datetime import datetime, timedelta, UTC
 
 # --- Configuration ---
 DEBUG_MODE = False
-# ---------------------------------------------------------
-
 DATA_DIR = os.path.expanduser('~/shepherd_data')
 DATABASE_FILE = os.path.join(DATA_DIR, 'shepherd.db')
 LOG_RETENTION_MINUTES = 10
@@ -38,7 +40,7 @@ def get_configured_miners(conn):
 # --- Worker Threads ---
 
 def monitor_miner(tty_symlink, miner_info):
-    """A thread that monitors a serial port and puts all data/status into a queue."""
+# ... existing code ...
     thread_name = threading.current_thread().name
     miner_db_id = miner_info['db_id']
     log_pattern = re.compile(r'>>>\s*(?P<key>.+?):\s*(?P<value>.+)')
@@ -82,42 +84,44 @@ def database_writer():
     thread_name = threading.current_thread().name
     while True:
         try:
+            # --- MEMORY LEAK FIX ---
+            # The 'with' statement is now INSIDE the loop.
+            # This ensures the connection is created and, crucially,
+            # closed cleanly on every iteration, even if errors occur.
             with get_db_connection() as conn:
-                while True:
+                while not data_queue.empty(): # Process all items currently in queue
                     item = data_queue.get()
-                    item_type = item[0]
-                    # --- MODIFIED: Use timezone-aware datetime and convert to ISO string ---
                     now_iso = datetime.now(UTC).isoformat()
 
-                    if item_type == 'LOG':
-                        _, miner_id, log_key, log_value = item
-                        conn.execute("""
-                            INSERT INTO miner_logs (miner_id, log_key, log_value, created_at)
-                            VALUES (?, ?, ?, ?);
-                        """, (miner_id, log_key, log_value, now_iso))
-                        conn.execute("UPDATE miners SET last_seen = ? WHERE id = ?;", (now_iso, miner_id))
+                    with conn: # Use a transaction for the block
+                        if item[0] == 'LOG':
+                            _, miner_id, log_key, log_value = item
+                            conn.execute("""
+                                INSERT INTO miner_logs (miner_id, log_key, log_value, created_at)
+                                VALUES (?, ?, ?, ?);
+                            """, (miner_id, log_key, log_value, now_iso))
+                            conn.execute("UPDATE miners SET last_seen = ? WHERE id = ?;", (now_iso, miner_id))
 
-                    elif item_type == 'STATUS':
-                        _, miner_id, new_status = item
-                        conn.execute("UPDATE miners SET status = ?, last_seen = ? WHERE id = ?;", (new_status, now_iso, miner_id))
+                        elif item[0] == 'STATUS':
+                            _, miner_id, new_status = item
+                            conn.execute("UPDATE miners SET status = ?, last_seen = ? WHERE id = ?;", (new_status, now_iso, miner_id))
                     
-                    conn.commit()
                     data_queue.task_done()
-                    # -------------------------------------------------------------------------
+            # -------------------------
+            time.sleep(1) # Small sleep to prevent tight-looping if queue is empty
 
         except Exception as e:
-            print(f"[{thread_name}] Error writing to database: {e}. Reconnecting in 5s...")
+            print(f"[{thread_name}] Error writing to database: {e}. Retrying in 5s...")
             time.sleep(5)
 
 
 def cleanup_logs():
-    """Periodically cleans up old logs from the miner_logs table."""
+# ... existing code ...
     thread_name = threading.current_thread().name
     while True:
         time.sleep(CLEANUP_INTERVAL_MINUTES * 60)
         try:
             with get_db_connection() as conn:
-                # --- MODIFIED: Use timezone-aware datetime and convert to ISO string for comparison ---
                 cutoff_time = datetime.now(UTC) - timedelta(minutes=LOG_RETENTION_MINUTES)
                 cutoff_iso = cutoff_time.isoformat()
                 cursor = conn.cursor()
@@ -130,6 +134,7 @@ def cleanup_logs():
 # --- Main Application Logic ---
 
 if __name__ == "__main__":
+# ... existing code ...
     print("Starting The Shepherd Data Ingestor...")
     writer_thread = threading.Thread(target=database_writer, name="DB-Writer", daemon=True)
     writer_thread.start()
@@ -151,4 +156,3 @@ if __name__ == "__main__":
             time.sleep(60)
     except KeyboardInterrupt:
         print("\nShutting down ingestor...")
-
