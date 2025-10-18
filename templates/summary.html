@@ -1,3 +1,8 @@
+<!--
+    File: summary.html
+    Version: 0.0.0.2
+    Description: A detailed view of the aggregated summary data for each miner.
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,6 +11,32 @@
     <title>Summary Data - The Shepherd</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+        // ENHANCEMENT: Function to format timestamps into a human-readable format.
+        function formatLastSeen() {
+            const cells = document.querySelectorAll('td[data-timestamp]');
+            cells.forEach(cell => {
+                const isoString = cell.getAttribute('data-timestamp');
+                if (!isoString || isoString === 'Never') {
+                    cell.innerHTML = 'Never';
+                    return;
+                }
+
+                const then = new Date(isoString);
+                const now = new Date();
+                const diffMinutes = (now - then) / (1000 * 60);
+
+                if (diffMinutes < 10) {
+                    const minutes = Math.max(1, Math.floor(diffMinutes));
+                    cell.innerHTML = `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+                } else if (diffMinutes < 60) {
+                    cell.innerHTML = then.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase();
+                } else {
+                    cell.innerHTML = '<strong class="text-red-500 font-bold">STALE</strong>';
+                }
+            });
+        }
+        
+        // Auto-refresh logic for the page content.
         setInterval(() => {
             fetch(window.location.href)
                 .then(response => response.text())
@@ -13,9 +44,15 @@
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(html, 'text/html');
                     document.getElementById('summary-table-body').innerHTML = doc.getElementById('summary-table-body').innerHTML;
+                    
+                    // ENHANCEMENT: Re-run the formatting after the table is updated.
+                    formatLastSeen();
                 })
                 .catch(err => console.error('Failed to refresh data:', err));
         }, 5000);
+        
+        // ENHANCEMENT: Run the formatting once on initial page load.
+        document.addEventListener('DOMContentLoaded', formatLastSeen);
     </script>
 </head>
 <body class="bg-gray-900 text-gray-200 font-sans">
@@ -38,7 +75,7 @@
                         <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Temp</th>
                         <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Valid Blocks</th>
                         <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Best Diff</th>
-                        <th class="px-5 py-3 border-b-2 border-raw_logsgray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Shares</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Shares</th>
                         <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Submits</th>
                         <th class="px-5 py-3 border-b-2 border-gray-700 bg-gray-700 text-left text-xs font-semibold text-cyan-300 uppercase tracking-wider">Total MHashes</th>
                     </tr>
@@ -47,7 +84,8 @@
                     {% for row in summary_data %}
                     <tr class="hover:bg-gray-700">
                         <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100 font-semibold">{{ row.miner_id }}</td>
-                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-400">{{ row.last_updated }}</td>
+                        <!-- ENHANCEMENT: Added data-timestamp attribute for JS formatting -->
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-400" data-timestamp="{{ row.last_updated }}">{{ row.last_updated }}</td>
                         <td class="px-5 py-4 border-b border-gray-700 text-sm text-cyan-300 font-bold">{{ row['KH/s'] }}</td>
                         <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">{{ row['Temperature'] }}</td>
                         <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">{{ row['Valid blocks'] }}</td>
@@ -67,4 +105,3 @@
     </div>
 </body>
 </html>
-

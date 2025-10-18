@@ -1,3 +1,7 @@
+# price_updater.py
+# Version: 0.0.0.3
+# Description: Fetches and caches BTC price data from an external API.
+
 import requests
 import json
 import time
@@ -19,9 +23,11 @@ def fetch_and_cache_price():
         
         data = response.json()
         
+        # BUG FIX: Corrected the key for 24h change based on API response.
+        # The key is 'price_change_1D_percent', not 'percent_change_24h'.
         price_data = {
-            "price_usd": float(data.get("last_price_usd", 0)),
-            "change_24h": float(data.get("percent_change_24h", 0)),
+            "price_usd": float(data.get("last_price_usd") or 0.0),
+            "change_24h": float(data.get("price_change_1D_percent") or 0.0),
             "last_updated": datetime.now(UTC).isoformat()
         }
         
@@ -48,3 +54,4 @@ if __name__ == "__main__":
             time.sleep(POLL_INTERVAL_SECONDS)
     except KeyboardInterrupt:
         print("\nShutting down BTC price updater...")
+

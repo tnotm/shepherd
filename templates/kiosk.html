@@ -10,16 +10,6 @@
             height: 100%;
             overflow: hidden;
         }
-        /* Custom font sizes for clock elements */
-        .clock-time {
-            font-size: 6rem; /* Equivalent to text-8xl */
-            line-height: 1; /* Adjust line height to reduce vertical space */
-        }
-        .clock-ampm {
-            font-size: 3rem; /* Smaller size for AM/PM */
-            line-height: 1; /* Adjust line height */
-            margin-top: -0.5rem; /* Pull AM/PM closer to time */
-        }
     </style>
 </head>
 <body class="bg-black text-gray-200 font-mono" onclick="toggleMenu(event)">
@@ -39,12 +29,10 @@
             </div>
         </div>
 
-        <!-- Clock Section --><div class="flex-grow bg-gray-800 text-white flex flex-col items-center justify-center">
-            <div id="clock-container" class="text-center flex flex-col items-center">
-                <h1 id="clock-time" class="font-bold font-sans clock-time"></h1>
-                <p id="clock-ampm" class="font-bold font-sans clock-ampm"></p>
-                <p id="clock-date" class="text-2xl mt-4"></p>
-            </div>
+        <!-- Clock Section -->
+        <div class="flex-grow bg-gray-800 text-white flex flex-col items-center justify-center text-center">
+            <h1 id="clock-display" class="font-bold font-sans text-7xl tracking-tighter"></h1>
+            <p id="clock-date" class="text-2xl mt-2"></p>
         </div>
 
         <!-- Herd Stats Section --><div id="herd-stats" class="flex-shrink-0 bg-black p-2">
@@ -73,25 +61,22 @@
 
     <script>
         function updateClock() {
-            const timeElement = document.getElementById('clock-time');
-            const ampmElement = document.getElementById('clock-ampm');
+            const clockDisplayElement = document.getElementById('clock-display');
             const dateElement = document.getElementById('clock-date');
-            if (!timeElement || !ampmElement || !dateElement) return;
+            if (!clockDisplayElement || !dateElement) return;
 
             const now = new Date();
             
-            let hours = now.getHours();
-            const minutes = now.getMinutes().toString().padStart(2, '0');
-            const seconds = now.getSeconds().toString().padStart(2, '0');
-            const ampm = hours >= 12 ? 'PM' : 'AM';
-            hours = hours % 12;
-            hours = hours ? hours : 12; 
-            
-            timeElement.textContent = `${hours}:${minutes}:${seconds}`;
-            ampmElement.textContent = ampm;
+            // This will generate the full time string like "3:06:26 PM"
+            const timeString = now.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+            });
+            clockDisplayElement.textContent = timeString;
 
             const dateString = now.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-            
             dateElement.textContent = dateString;
         }
 
@@ -99,7 +84,9 @@
         updateClock();
 
         setInterval(() => {
-            if (document.getElementById('nav-menu') && !document.getElementById('nav-menu').classList.contains('hidden')) {
+            // Prevent refresh if nav menu is open
+            const navMenuPanel = document.getElementById('nav-menu-panel');
+            if (navMenuPanel && !navMenuPanel.classList.contains('-translate-x-full')) {
                 return;
             }
             fetch(window.location.href)
@@ -116,17 +103,6 @@
                 .catch(err => console.error('Failed to refresh data:', err));
         }, 5000);
         
-        function toggleMenu(event) {
-            if (event && event.target.closest('a')) {
-                return;
-            }
-            const navMenu = document.getElementById('nav-menu');
-            const navPanel = document.getElementById('nav-menu-panel');
-            if(navMenu && navPanel) {
-                navMenu.classList.toggle('hidden');
-                navPanel.classList.toggle('-translate-x-full');
-            }
-        }
     </script>
 </body>
 </html>

@@ -1,3 +1,4 @@
+<!-- 0.0.0.3 -->
 {% extends "_base_details.html" %}
 {% block title %}Dashboards{% endblock %}
 
@@ -16,6 +17,10 @@
         <a href="{{ url_for('main.dash_nerdminer') }}" class="bg-gray-800 p-4 rounded-lg hover:bg-gray-700 transition-colors">
             <h3 class="font-bold text-lg text-cyan-400">NerdMiner Homage</h3>
             <p class="text-gray-400 text-sm">A retro-style dashboard inspired by the classic NerdMiner display.</p>
+        </a>
+        <a href="{{ url_for('main.dash_matrix') }}" class="bg-gray-800 p-4 rounded-lg hover:bg-gray-700 transition-colors">
+            <h3 class="font-bold text-lg text-cyan-400">The Digital Stream</h3>
+            <p class="text-gray-400 text-sm">A dynamic, Matrix-style data visualization.</p>
         </a>
     </div>
 </div>

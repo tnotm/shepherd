@@ -1,3 +1,4 @@
+# shepherd/routes.py -- V.0.0.0.9
 import sqlite3
 import os
 import csv
@@ -49,12 +50,14 @@ def index():
         online_miners = sum(1 for m in miners if m['status'] == 'online')
         total_hash_khs = sum(float(m['KH/s'] or 0) for m in miners)
         total_shares = sum(int(m['Shares'] or 0) for m in miners)
-        # BUG FIX: Re-added best_difficulty calculation
+        # ENHANCEMENT: Calculate total block templates for the header
+        total_block_templates = sum(int(m['Block templates'] or 0) for m in miners)
         best_difficulty = max([float(m['Best difficulty'] or 0) for m in miners] or [0])
         herd_stats = {
             "total_miners": total_miners, "online_miners": online_miners,
             "total_hash_khs": total_hash_khs, "total_shares": total_shares,
-            "best_difficulty": best_difficulty, # BUG FIX: Added to dictionary
+            "best_difficulty": best_difficulty,
+            "total_block_templates": total_block_templates, # ENHANCEMENT: Added to dictionary
             "btc_price_data": get_btc_price_data()
         }
     return render_template('index.html', miners=miners, herd_stats=herd_stats)
@@ -69,7 +72,6 @@ def kiosk():
         online_miners = sum(1 for m in miners if m['status'] == 'online')
         total_hash_khs = sum(float(m['KH/s'] or 0) for m in miners)
         total_shares = sum(int(m['Shares'] or 0) for m in miners)
-        # BUG FIX: Changed from .get() to bracket notation for sqlite3.Row
         total_block_templates = sum(int(m['Block templates'] or 0) for m in miners)
         btc_data = get_btc_price_data()
         herd_stats = {
@@ -103,7 +105,6 @@ def dash_health():
         }
     return render_template('dash_health.html', miners=miners, herd_stats=herd_stats)
 
-# BUG FIX: Added missing /dash/nerdminer route
 @bp.route('/dash/nerdminer')
 def dash_nerdminer():
     # Using placeholder data as per our last implementation
@@ -114,6 +115,25 @@ def dash_nerdminer():
         'difficulty': '52.3T'
     }
     return render_template('dash_nerdminer.html', stats=stats)
+
+@bp.route('/dash/matrix')
+def dash_matrix():
+    with get_db_connection() as conn:
+        query = "SELECT m.status, s.* FROM miners m LEFT JOIN miner_summary s ON m.id = s.miner_id;"
+        miners = conn.execute(query).fetchall()
+        
+        total_hash_khs = sum(float(m['KH/s'] or 0) for m in miners)
+        total_shares = sum(int(m['Shares'] or 0) for m in miners)
+        total_block_templates = sum(int(m['Block templates'] or 0) for m in miners)
+        btc_data = get_btc_price_data()
+        
+        herd_stats = {
+            "total_hash_khs": total_hash_khs,
+            "total_shares": total_shares,
+            "total_block_templates": total_block_templates,
+            "btc_price_data": btc_data
+        }
+    return render_template('dash_matrix.html', herd_stats=herd_stats)
 
 # --- Farm Detail Routes ---
 @bp.route('/details')
@@ -175,7 +195,6 @@ def config():
         addresses = conn.execute("SELECT * FROM coin_addresses ORDER BY coin_ticker;").fetchall()
     return render_template('config.html', miners=miners, pools=pools, addresses=addresses)
 
-# BUG FIX: Added all missing management routes
 @bp.route('/miners/upload', methods=['POST'])
 def upload_miners():
     if 'miner_file' not in request.files:

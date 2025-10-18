@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>The Digital Stream</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html, body { overflow: hidden; background: #000; }
+        #matrix-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        #content-overlay {
+            position: relative;
+            z-index: 2;
+        }
+    </style>
+</head>
+<body class="font-mono" onclick="toggleMenu(event)">
+
+    <canvas id="matrix-canvas"></canvas>
+
+    <div id="content-overlay" class="w-full h-full p-8 flex flex-col justify-center gap-8">
+        <!-- Top Row Stats -->
+        <div class="grid grid-cols-2 gap-8">
+            <div id="btc-price-panel" class="bg-black/70 rounded-lg p-4 backdrop-blur-sm">
+                <h2 class="text-sm uppercase text-green-400">BTC / USD</h2>
+                <p class="text-4xl font-bold text-white">${{ "%.2f"|format(herd_stats.btc_price_data.price_usd) if herd_stats.btc_price_data.price_usd != 'N/A' else 'N/A' }}</p>
+                <p class="text-lg {% if herd_stats.btc_price_data.change_24h >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
+                    {{ "%.2f"|format(herd_stats.btc_price_data.change_24h) }}% (24h)
+                </p>
+            </div>
+            <div id="hash-rate-panel" class="bg-black/70 rounded-lg p-4 text-right backdrop-blur-sm">
+                <h2 class="text-sm uppercase text-green-400">Herd Hashrate</h2>
+                <p class="text-4xl font-bold text-white">{{ "%.2f"|format(herd_stats.total_hash_khs) }}</p>
+                <p class="text-lg text-gray-400">KH/s</p>
+            </div>
+        </div>
+
+        <!-- Bottom Row Stats -->
+        <div class="grid grid-cols-2 gap-8">
+            <div id="shares-panel" class="bg-black/70 rounded-lg p-4 backdrop-blur-sm">
+                <h2 class="text-sm uppercase text-green-400">Total Shares</h2>
+                <p class="text-4xl font-bold text-white">{{ herd_stats.total_shares }}</p>
+            </div>
+            <div id="templates-panel" class="bg-black/70 rounded-lg p-4 text-right backdrop-blur-sm">
+                <h2 class="text-sm uppercase text-green-400">Block Templates</h2>
+                <p class="text-4xl font-bold text-white">{{ herd_stats.total_block_templates }}</p>
+            </div>
+        </div>
+    </div>
+
+    {% include '_navigation_menu.html' %}
+
+    <script>
+        const canvas = document.getElementById('matrix-canvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const katakana = 'アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブプエェケセテネヘメレヱゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッン';
+        const latin = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        const nums = '0123456789';
+        const alphabet = katakana + latin + nums;
+
+        const fontSize = 16;
+        const columns = Math.floor(canvas.width / fontSize);
+
+        const rainDrops = [];
+        for (let x = 0; x < columns; x++) {
+            rainDrops[x] = 1;
+        }
+
+        const draw = () => {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#39FF14'; // Neon Green color for the rain
+            ctx.font = fontSize + 'px monospace';
+
+            for (let i = 0; i < rainDrops.length; i++) {
+                const text = alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+                ctx.fillText(text, i * fontSize, rainDrops[i] * fontSize);
+
+                if (rainDrops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                    rainDrops[i] = 0;
+                }
+                rainDrops[i]++;
+            }
+        };
+
+        setInterval(draw, 30);
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            // Recalculate columns on resize could be added here if needed
+        });
+    </script>
+</body>
+</html>
+

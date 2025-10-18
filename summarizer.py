@@ -1,3 +1,7 @@
+# summarizer.py
+# Version: 0.0.0.3
+# Description: Aggregates raw miner logs into a summary table for quick display.
+
 import sqlite3
 import time
 import os
@@ -79,9 +83,8 @@ def update_summary_stats(conn):
                     latest_logs.get('Best difficulty', {}).get('value'),
                     current_mhashes_data.get('value'),
                     latest_logs.get('Submits', {}).get('value'),
-                    # --- THE FIX: Look for "32Bit shares" instead of "Shares" ---
+                    # BUG FIX: The NerdMiner firmware logs shares under the key "32Bit shares"
                     latest_logs.get('32Bit shares', {}).get('value'),
-                    # -----------------------------------------------------------
                     latest_logs.get('Time mining', {}).get('value'),
                     current_mhashes, current_timestamp_iso, miner_id
                 ))
@@ -103,4 +106,3 @@ if __name__ == "__main__":
             time.sleep(AGGREGATION_INTERVAL_SECONDS)
     except KeyboardInterrupt:
         print("\nShutting down summarizer...")
-
