@@ -1,5 +1,5 @@
 # shepherd/routes.py
-# V.0.0.1.8
+# V.0.0.1.9
 # Description: Main routing file for the Shepherd Flask application.
 
 import sqlite3
@@ -230,40 +230,40 @@ def edit_miner(miner_id):
 @bp.route('/miners/onboard', methods=['POST'])
 def onboard_miner():
     unconfigured_id = request.form.get('unconfigured_id')
-    new_miner_id = request.form.get('miner_id').strip()
+    new_miner_id = request.form.get('miner_id', '').strip()
 
     if not unconfigured_id or not new_miner_id:
-        flash("Missing required information for onboarding.", 'error')
-        return redirect(url_for('main.config') + '#miners')
+        return jsonify({'success': False, 'message': 'Missing required information for onboarding.'}), 400
 
-    with get_db_connection() as conn:
-        with conn: 
-            device = conn.execute("SELECT * FROM unconfigured_devices WHERE id = ?;", (unconfigured_id,)).fetchone()
-            if not device:
-                flash("Device not found.", 'error')
-                return redirect(url_for('main.config') + '#miners')
+    try:
+        with get_db_connection() as conn:
+            with conn: 
+                device = conn.execute("SELECT * FROM unconfigured_devices WHERE id = ?;", (unconfigured_id,)).fetchone()
+                if not device:
+                    return jsonify({'success': False, 'message': 'Device not found or already configured.'}), 404
 
-            existing_miner = conn.execute("SELECT id FROM miners WHERE miner_id = ?;", (new_miner_id,)).fetchone()
-            if existing_miner:
-                flash(f"Miner ID '{new_miner_id}' is already in use.", 'error')
-                return redirect(url_for('main.config') + '#miners')
+                existing_miner = conn.execute("SELECT id FROM miners WHERE miner_id = ?;", (new_miner_id,)).fetchone()
+                if existing_miner:
+                    return jsonify({'success': False, 'message': f"Miner ID '{new_miner_id}' is already in use."}), 409
 
-            conn.execute("""
-                INSERT INTO miners (miner_id, dev_path, port_path, attrs_idVendor, attrs_idProduct, attrs_serial)
-                VALUES (?, ?, ?, ?, ?, ?);
-            """, (
-                new_miner_id,
-                device['dev_path'],
-                device['port_path'],
-                device['vendor_id'],
-                device['product_id'],
-                device['serial_number']
-            ))
+                conn.execute("""
+                    INSERT INTO miners (miner_id, dev_path, port_path, attrs_idVendor, attrs_idProduct, attrs_serial)
+                    VALUES (?, ?, ?, ?, ?, ?);
+                """, (
+                    new_miner_id,
+                    device['dev_path'],
+                    device['port_path'],
+                    device['vendor_id'],
+                    device['product_id'],
+                    device['serial_number']
+                ))
 
-            conn.execute("DELETE FROM unconfigured_devices WHERE id = ?;", (unconfigured_id,))
-
-    flash(f"Successfully onboarded '{new_miner_id}'. A restart of the ingestor service may be required.", 'success')
-    return redirect(url_for('main.config') + '#miners')
+                conn.execute("DELETE FROM unconfigured_devices WHERE id = ?;", (unconfigured_id,))
+        
+        return jsonify({'success': True, 'message': f"Successfully onboarded '{new_miner_id}'. The page will now reload."})
+    except Exception as e:
+        print(f"Onboarding error: {e}")
+        return jsonify({'success': False, 'message': 'A server error occurred during onboarding.'}), 500
 
 @bp.route('/pools/add', methods=['POST'])
 def add_pool():
@@ -358,4 +358,3 @@ def api_unconfigured_devices():
     with get_db_connection() as conn:
         devices = conn.execute("SELECT * FROM unconfigured_devices ORDER BY discovered_at DESC;").fetchall()
         return jsonify([dict(row) for row in devices])
-

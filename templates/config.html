@@ -1,6 +1,5 @@
-<!--
-templates/config.html 
-Version: 0.0.0.7
+<!-- 
+Version: 0.0.1.0
 Description: Main configuration page for Shepherd.
 -->
 <!DOCTYPE html>
@@ -69,6 +68,7 @@ Description: Main configuration page for Shepherd.
                     <div class="mb-8">
                         <h3 class="text-xl font-semibold mb-2 text-cyan-300">Discovered Miners</h3>
                         <p class="text-gray-400 mb-4">Newly connected devices will appear here. Assign a Miner ID to add them to your farm.</p>
+                        <div id="ajax-flash-container"></div>
                         <div id="discovered-miners-list" class="space-y-3">
                             <p id="no-devices-message" class="text-gray-500">No new devices detected. Plug in a miner to begin.</p>
                         </div>
@@ -272,6 +272,34 @@ Description: Main configuration page for Shepherd.
         </div>
     </div>
 
+    <!-- Onboard Miner Modal -->
+    <div id="onboard-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+        <div class="bg-gray-800 rounded-lg p-8 max-w-lg w-full">
+            <h2 class="text-2xl font-bold text-white mb-4">Onboard New Miner</h2>
+            <form id="onboard-modal-form" onsubmit="onboardMinerAjax(event)">
+                <input type="hidden" id="onboard_unconfigured_id" name="unconfigured_id">
+                <div class="space-y-4">
+                    <div>
+                        <label for="onboard_miner_id" class="block text-sm font-medium text-gray-300">Miner ID</label>
+                        <input type="text" id="onboard_miner_id" name="miner_id" required class="mt-1 block w-full bg-gray-700 p-2 rounded-md">
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-400">Device Info:</p>
+                        <div class="font-mono text-xs bg-gray-900 p-2 rounded-md mt-1">
+                            <p><strong>Path:</strong> <span id="onboard_dev_path" class="text-cyan-400"></span></p>
+                            <p><strong>Port:</strong> <span id="onboard_port_path" class="text-cyan-400"></span></p>
+                            <p><strong>Serial:</strong> <span id="onboard_serial_number"></span></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex justify-end gap-4 mt-6">
+                    <button type="button" onclick="closeOnboardModal()" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">Cancel</button>
+                    <button type="submit" class="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded">Add Miner</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Edit Miner Modal -->
     <div id="edit-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
         <div class="bg-gray-800 rounded-lg p-8 max-w-lg w-full">
@@ -332,6 +360,67 @@ Description: Main configuration page for Shepherd.
             }
         }
 
+        function showAjaxFlash(message, category = 'success') {
+            const container = document.getElementById('ajax-flash-container');
+            const colorClasses = category === 'error' 
+                ? 'bg-red-800 text-red-200' 
+                : 'bg-green-800 text-green-200';
+            
+            const flashDiv = document.createElement('div');
+            flashDiv.className = `flex items-center justify-between p-4 mb-4 text-sm rounded-lg ${colorClasses} transition-opacity duration-500`;
+            flashDiv.innerHTML = `
+                <span>${message}</span>
+                <button type="button" onclick="this.parentElement.style.display='none'" class="ml-4 -mr-1.5 -my-1.5 bg-transparent rounded-lg p-1.5 inline-flex items-center justify-center text-current hover:bg-white/20">
+                    <span class="sr-only">Close</span>
+                    <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                    </svg>
+                </button>
+            `;
+            container.innerHTML = ''; // Clear previous messages
+            container.appendChild(flashDiv);
+
+            setTimeout(() => {
+                flashDiv.style.opacity = '0';
+                setTimeout(() => flashDiv.remove(), 500);
+            }, 5000);
+        }
+
+        async function onboardMinerAjax(event) {
+            event.preventDefault();
+            const form = event.target;
+            const formData = new FormData(form);
+            const submitButton = form.querySelector('button[type="submit"]');
+
+            submitButton.disabled = true;
+            submitButton.textContent = 'Adding...';
+
+            try {
+                const response = await fetch("{{ url_for('main.onboard_miner') }}", {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    closeOnboardModal();
+                    showAjaxFlash(result.message, 'success');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    showAjaxFlash(result.message || 'An unknown error occurred.', 'error');
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'Add Miner';
+                }
+            } catch (error) {
+                console.error('AJAX onboard error:', error);
+                showAjaxFlash('A network error occurred. Please try again.', 'error');
+                submitButton.disabled = false;
+                submitButton.textContent = 'Add Miner';
+            }
+        }
+
         async function fetchDiscoveredDevices() {
             try {
                 const response = await fetch("{{ url_for('main.api_unconfigured_devices') }}");
@@ -346,17 +435,21 @@ Description: Main configuration page for Shepherd.
                     devices.forEach(device => {
                         const deviceCard = document.createElement('div');
                         deviceCard.className = 'discovered-device-card bg-gray-900 p-4 rounded-lg flex flex-col md:flex-row items-center justify-between gap-4';
+                        
+                        // Use JSON.stringify to safely pass string arguments with special characters
+                        const devPath = JSON.stringify(device.dev_path || '');
+                        const portPath = JSON.stringify(device.port_path || 'N/A');
+                        const serial = JSON.stringify(device.serial_number || 'N/A');
+
                         deviceCard.innerHTML = `
                             <div class="font-mono text-xs text-gray-400 text-center md:text-left">
                                 <p><strong>Path:</strong> <span class="text-cyan-400">${device.dev_path}</span></p>
                                 <p><strong>Port:</strong> <span class="text-cyan-400">${device.port_path || 'N/A'}</span></p>
                                 <p><strong>Serial:</strong> ${device.serial_number || 'N/A'}</p>
                             </div>
-                            <form action="{{ url_for('main.onboard_miner') }}" method="post" class="flex items-center gap-2 w-full md:w-auto">
-                                <input type="hidden" name="unconfigured_id" value="${device.id}">
-                                <input type="text" name="miner_id" placeholder="Enter Miner ID" required class="bg-gray-700 p-2 rounded-md w-full md:w-auto flex-grow">
-                                <button type="submit" class="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded">Add Miner</button>
-                            </form>
+                            <button type="button" onclick='openOnboardModal(${device.id}, ${devPath}, ${portPath}, ${serial})' class="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded">
+                                Add Miner
+                            </button>
                         `;
                         listContainer.appendChild(deviceCard);
                     });
@@ -368,6 +461,20 @@ Description: Main configuration page for Shepherd.
             }
         }
         
+        function openOnboardModal(deviceId, devPath, portPath, serialNumber) {
+            const modal = document.getElementById('onboard-modal');
+            document.getElementById('onboard_unconfigured_id').value = deviceId;
+            document.getElementById('onboard_miner_id').value = '';
+            document.getElementById('onboard_dev_path').textContent = devPath;
+            document.getElementById('onboard_port_path').textContent = portPath;
+            document.getElementById('onboard_serial_number').textContent = serialNumber;
+            modal.classList.remove('hidden');
+        }
+
+        function closeOnboardModal() {
+            document.getElementById('onboard-modal').classList.add('hidden');
+        }
+
         function openEditModal(minerId, currentMinerId, currentChipset, currentVersion, currentLocationNotes) {
             const modal = document.getElementById('edit-modal');
             const form = document.getElementById('edit-modal-form');

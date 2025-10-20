@@ -1,6 +1,6 @@
 <!--
 templates/summary.html
-Version: 0.0.0.2
+Version: 0.0.0.3
 Description: A detailed view of the aggregated summary data for each miner.
 -->
 <!DOCTYPE html>
@@ -11,48 +11,78 @@ Description: A detailed view of the aggregated summary data for each miner.
     <title>Summary Data - The Shepherd</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        // ENHANCEMENT: Function to format timestamps into a human-readable format.
-        function formatLastSeen() {
-            const cells = document.querySelectorAll('td[data-timestamp]');
-            cells.forEach(cell => {
-                const isoString = cell.getAttribute('data-timestamp');
-                if (!isoString || isoString === 'Never') {
-                    cell.innerHTML = 'Never';
+        function formatLastSeen(isoString) {
+            if (!isoString) return 'Never';
+            const now = new Date();
+            const lastSeen = new Date(isoString);
+            const diffSeconds = (now - lastSeen) / 1000;
+            const diffMinutes = diffSeconds / 60;
+
+            if (diffMinutes < 2) { // Consider under 2 minutes as "just now"
+                return 'Just now';
+            }
+            if (diffMinutes < 60) {
+                return `${Math.round(diffMinutes)} mins ago`;
+            } 
+            if (diffMinutes < 120) {
+                 return '1 hour ago';
+            }
+            if (diffMinutes < 1440) { // Less than a day
+                 return `${Math.round(diffMinutes / 60)} hours ago`;
+            } 
+            return '<strong class="text-red-500">STALE</strong>';
+        }
+
+        async function refreshData() {
+            try {
+                const response = await fetch('/api/herd_data');
+                const data = await response.json();
+                const tableBody = document.getElementById('summary-table-body');
+                tableBody.innerHTML = ''; // Clear existing rows
+
+                if (data.miners_list.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="9" class="text-center py-10 text-gray-500">No summary data available.</td></tr>';
                     return;
                 }
 
-                const then = new Date(isoString);
-                const now = new Date();
-                const diffMinutes = (now - then) / (1000 * 60);
+                data.miners_list.forEach(miner => {
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-gray-700';
 
-                if (diffMinutes < 10) {
-                    const minutes = Math.max(1, Math.floor(diffMinutes));
-                    cell.innerHTML = `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
-                } else if (diffMinutes < 60) {
-                    cell.innerHTML = then.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase();
-                } else {
-                    cell.innerHTML = '<strong class="text-red-500 font-bold">STALE</strong>';
-                }
-            });
+                    const khs = miner['KH/s'] ? parseFloat(miner['KH/s']).toFixed(2) : 'N/A';
+                    const temp = miner.Temperature || 'N/A';
+                    const validBlocks = miner['Valid blocks'] ? parseInt(miner['Valid blocks']).toLocaleString('en-US') : 'N/A';
+                    const diff = miner['Best difficulty'] ? parseFloat(miner['Best difficulty']).toFixed(2) : 'N/A';
+                    const shares = miner.Shares ? parseInt(miner.Shares).toLocaleString('en-US') : 'N/A';
+                    const submits = miner.Submits ? parseInt(miner.Submits).toLocaleString('en-US') : 'N/A';
+                    const mhashes = miner['Total MHashes'] ? parseFloat(miner['Total MHashes']).toLocaleString('en-US', {maximumFractionDigits: 0}) : 'N/A';
+                    const lastUpdated = miner.last_updated ? formatLastSeen(miner.last_updated) : 'Never';
+
+                    row.innerHTML = `
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100 font-semibold">${miner.miner_id}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-400">${lastUpdated}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-cyan-300 font-bold">${khs}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">${temp}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">${validBlocks}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">${diff}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">${shares}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">${submits}</td>
+                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">${mhashes}</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Failed to refresh data:', error);
+                const tableBody = document.getElementById('summary-table-body');
+                tableBody.innerHTML = '<tr><td colspan="9" class="text-center py-10 text-red-400">Error loading data.</td></tr>';
+            }
         }
         
         // Auto-refresh logic for the page content.
-        setInterval(() => {
-            fetch(window.location.href)
-                .then(response => response.text())
-                .then(html => {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    document.getElementById('summary-table-body').innerHTML = doc.getElementById('summary-table-body').innerHTML;
-                    
-                    // ENHANCEMENT: Re-run the formatting after the table is updated.
-                    formatLastSeen();
-                })
-                .catch(err => console.error('Failed to refresh data:', err));
-        }, 5000);
+        setInterval(refreshData, 5000);
         
-        // ENHANCEMENT: Run the formatting once on initial page load.
-        document.addEventListener('DOMContentLoaded', formatLastSeen);
+        // Run the formatting once on initial page load.
+        document.addEventListener('DOMContentLoaded', refreshData);
     </script>
 </head>
 <body class="bg-gray-900 text-gray-200 font-sans">
@@ -81,24 +111,9 @@ Description: A detailed view of the aggregated summary data for each miner.
                     </tr>
                 </thead>
                 <tbody id="summary-table-body">
-                    {% for row in summary_data %}
-                    <tr class="hover:bg-gray-700">
-                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100 font-semibold">{{ row.miner_id }}</td>
-                        <!-- ENHANCEMENT: Added data-timestamp attribute for JS formatting -->
-                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-400" data-timestamp="{{ row.last_updated }}">{{ row.last_updated }}</td>
-                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-cyan-300 font-bold">{{ row['KH/s'] }}</td>
-                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">{{ row['Temperature'] }}</td>
-                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">{{ row['Valid blocks'] }}</td>
-                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">{{ row['Best difficulty'] }}</td>
-                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">{{ row['Shares'] }}</td>
-                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">{{ row['Submits'] }}</td>
-                        <td class="px-5 py-4 border-b border-gray-700 text-sm text-gray-100">{{ row['Total MHashes'] }}</td>
-                    </tr>
-                    {% else %}
                     <tr>
-                        <td colspan="9" class="text-center py-10 text-gray-500">No summary data available.</td>
+                        <td colspan="9" class="text-center py-10 text-gray-500">Loading data...</td>
                     </tr>
-                    {% endfor %}
                 </tbody>
             </table>
         </div>
