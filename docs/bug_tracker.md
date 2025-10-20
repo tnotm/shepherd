@@ -13,7 +13,7 @@
 12. sqlite3.OperationalError: Cannot add a UNIQUE column during database migration RESOLVED database.py 0.0.0.6
 13. Error on exit of discover_service.py
 14. When in configuration page and assigning a new miner's details, page will refresh and knock the user out of the text fields
-15. Data isn't showing any minerdata on the summary.html
+15. Data isn't showing any minerdata on the summary.html - RESOLVED templates/summary.html 0.0.0.3
 
 
 

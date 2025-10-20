@@ -49,12 +49,6 @@ The goal of this feature is to provide a mechanism within the Shepherd web appli
 
     7.  Update the command status to "complete" or "error" in the database.
 
-### 2.4. Frontend (`templates/config.html` and new template)
-
--   A new "Manage" button will be added to the "Configured Miners" list.
-
--   This will lead to a new page (`manage_miner.html`) that displays the last known configuration and has forms to trigger the "Get Config" and "Set Config" actions via AJAX calls to the new API endpoints.
-
 ### Investigation Log & Current Status
 
 **Status:** More Analysis Needed
@@ -72,3 +66,21 @@ The goal of this feature is to provide a mechanism within the Shepherd web appli
 4.  **In-Memory Builder Failure:** An attempt to remove the `mkspiffs` dependency by building the filesystem image byte-by-byte in Python also failed, producing the same AP-mode reset. This proves that the SPIFFS structure expected by the NerdMiner firmware has undocumented specifics that we cannot reliably replicate.
 
 **Conclusion:** The risk of "bricking" (reverting to AP mode) miners is too high. The fact that even the official NerdMiner software can be unstable with configuration saves suggests this is a deep-seated firmware/hardware issue. This feature is **shelved** until a 100% reliable method for creating and flashing a valid SPIFFS image can be discovered.
+
+### **New Investigation Path: AP Configuration**
+
+**Concept:** Instead of flashing a config file, force the miner into its native AP mode. The Shepherd server (the Pi) would then programmatically disconnect from its own network, connect to the miner's AP, submit the configuration via the miner's web portal, and then switch back to the main network.
+
+**Analysis:**
+
+-   **Pros:** This would bypass the entire unreliable SPIFFS flashing process and use the firmware's intended configuration method.
+
+-   **Cons & Major Risks:**
+
+    -   **Network Disruption:** This would require the Shepherd server to disconnect from its primary network, making the entire Shepherd web UI and all its services temporarily unavailable.
+
+    -   **High Complexity:** Requires robust scripting to manage the Pi's network interfaces (`wpa_supplicant`, `nmcli`, etc.), handle the captive portal, and make HTTP requests.
+
+    -   **Critical Failure Point:** If the script fails to reconnect the Pi to the main network, the Shepherd server could be knocked offline permanently, requiring manual intervention.
+
+**Current Assessment:** While technically feasible, the risk of taking the central server offline makes this approach extremely dangerous for a production system. It remains a potential, but high-risk, avenue for future investigation.
