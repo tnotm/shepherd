@@ -11,3 +11,4 @@
 10. Create descriptive README.md file - IMPLEMENTED
 11. Read/Write Miner Config - More Analysis Needed (See feature doc for investigation log)
 12. Add License, Liability, and Tipping sections to README.md - IMPLEMENTED
+13. Design and Update Process - Full update to miner discovery allowing pool, address, and maybe name captured.
