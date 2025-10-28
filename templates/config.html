@@ -1,8 +1,7 @@
 <!-- 
-Version: 0.0.3.1
+Version: 0.0.4.0
 Description: Main configuration page for Shepherd.
-No changes needed in HTML structure, uses V.0.0.2.7 from previous step.
-The backend routes.py change fixed the API endpoint name.
+REFACTOR: Extracted JavaScript into static/js/config_manager.js. Added data-url-* attributes for Flask URLs.
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -15,7 +14,9 @@ The backend routes.py change fixed the API endpoint name.
         .nav-link.active { background-color: #0e7490; color: white; }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-200 font-sans">
+<body class="bg-gray-900 text-gray-200 font-sans" 
+      data-url-api-state="{{ url_for('api.api_device_state') }}"
+      data-url-action="{{ url_for('actions.run_miner_action') }}">
     <div class="container mx-auto p-4 md:p-8">
         <!-- ... Header ... -->
          <header class="flex justify-between items-center mb-6 border-b border-gray-700 pb-4">
@@ -72,21 +73,18 @@ The backend routes.py change fixed the API endpoint name.
                     </div>
                 </div>
 
-                <!-- ... Pools, Addresses, Developer Panes ... -->
+                <!-- ... Pools, Addresses, Developer Panes (HTML structure unchanged) ... -->
                 <div id="pane-pools" class="content-pane hidden bg-gray-800 p-6 rounded-lg">
-                    <!-- ... existing pools content ... -->
                      <h2 class="text-2xl font-semibold mb-4 text-cyan-300">Manage Mining Pools</h2>
                      <div class="mb-8 p-4 border border-gray-700 rounded-md"> /* Form */ </div>
                      <div> /* Table */ </div>
                 </div>
                 <div id="pane-addresses" class="content-pane hidden bg-gray-800 p-6 rounded-lg">
-                    <!-- ... existing addresses content ... -->
                      <h2 class="text-2xl font-semibold mb-4 text-cyan-300">Manage Coin Addresses</h2>
                      <div class="mb-8 p-4 border border-gray-700 rounded-md"> /* Form */ </div>
                      <div> /* Table */ </div>
                 </div>
                 <div id="pane-developer" class="content-pane hidden bg-gray-800 p-6 rounded-lg">
-                    <!-- ... existing developer options content ... -->
                      <h2 class="text-2xl font-semibold mb-4 text-cyan-300">Developer Options</h2>
                      <div class="space-y-6"> /* Service Control */ </div>
                 </div>
@@ -95,15 +93,13 @@ The backend routes.py change fixed the API endpoint name.
         </div>
     </div>
 
-    <!-- MODALS -->
-    <!-- ... details-modal, actions-modal, delete-modal, edit-modal remain unchanged from V.0.0.3.1 ... -->
+    <!-- MODALS (HTML structure unchanged) -->
     <div id="details-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden z-50"> /* Content Unchanged */ </div>
     <div id="actions-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden z-50"> /* Content Unchanged */ </div>
     <div id="delete-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden z-50"> /* Content Unchanged */ </div>
     <div id="edit-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden z-50"> /* Content Unchanged */ </div>
 
-
-    <!-- Modal to Configure a "Stray" Device -->
+    <!-- Modal to Configure a "Stray" Device (HTML structure unchanged) -->
     <div id="configure-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden z-50">
         <div class="bg-gray-800 rounded-lg p-6 max-w-lg w-full">
             <h2 class="text-2xl font-bold text-white mb-4">Configure New Device</h2>
@@ -113,10 +109,9 @@ The backend routes.py change fixed the API endpoint name.
             <div class="space-y-1 text-sm bg-gray-900 p-3 rounded-md mb-4 font-mono">
                 <p><strong class="text-gray-400 w-24 inline-block">Device Path:</strong> <span id="config-dev-path" class="text-cyan-400"></span></p>
                 <p><strong class="text-gray-400 w-24 inline-block">Port Path:</strong> <span id="config-port-path" class="text-cyan-400"></span></p>
-                <p><strong class="text-gray-400 w-24 inline-block">USB Serial:</strong> <span id="config-serial"></span></p> 
+                <p><strong class_=("text-gray-400 w-24 inline-block")>USB Serial:</strong> <span id="config-serial"></span></p> 
                 <p><strong class="text-gray-400 w-24 inline-block">Vendor ID:</strong> <span id="config-vendor"></span></p>
                 <p><strong class="text-gray-400 w-24 inline-block">Product ID:</strong> <span id="config-product"></span></p>
-                <!-- Display captured config if available -->
                 <div id="config-captured-info" class="mt-2 pt-2 border-t border-gray-700 hidden">
                     <p><strong class="text-gray-400 w-24 inline-block">Capt. Chipset:</strong> <span id="config-captured-chipset" class="text-yellow-300"></span></p> 
                     <p><strong class="text-gray-400 w-24 inline-block">Capt. MAC:</strong> <span id="config-captured-mac" class="text-yellow-300"></span></p> 
@@ -127,7 +122,7 @@ The backend routes.py change fixed the API endpoint name.
             </div>
 
             <!-- Onboard Form -->
-            <form id="onboard-form" onsubmit="onboardStray(event)">
+            <form id="onboard-form" onsubmit="onboardStray(event)" data-url-onboard="{{ url_for('actions.onboard_stray_miner') }}">
                 <input type="hidden" id="config-form-dev-path" name="dev_path">
                 <input type="hidden" id="config-form-port-path" name="port_path">
                 <input type="hidden" id="config-form-serial" name="serial_number"> 
@@ -167,149 +162,9 @@ The backend routes.py change fixed the API endpoint name.
         </div>
     </div>
     
-
-    <script>
-        // --- Global State & Pane Navigation (unchanged) ---
-        let isModalOpen = false; let currentModalData = null; 
-        function showPane(paneId, element) { /* ... */ 
-            window.location.hash = paneId;
-            document.querySelectorAll('.content-pane').forEach(pane => pane.classList.add('hidden'));
-            document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
-            document.getElementById('pane-' + paneId).classList.remove('hidden');
-            if (element) { element.classList.add('active'); } 
-            else { document.querySelector(`.nav-link[href="#${paneId}"]`).classList.add('active'); }
-        }
-
-        // --- Live Data Fetching (unchanged) ---
-        const liveIndicator = document.getElementById('live-indicator');
-        async function fetchDeviceData() { /* ... */ 
-            if (isModalOpen) { console.log("[fetch] Skipping, modal open."); return; }
-            console.log("[fetch] Starting..."); 
-            try {
-                liveIndicator.classList.remove('bg-red-500', 'bg-gray-500'); liveIndicator.classList.add('bg-yellow-500'); 
-                const response = await fetch("{{ url_for('main.api_device_state') }}");
-                console.log("[fetch] Status:", response.status); 
-                if (!response.ok) { throw new Error(`Network error: ${response.status} ${response.statusText}`); }
-                const responseText = await response.text(); console.log("[fetch] Raw text:", responseText); 
-                let devices = []; let apiError = null;
-                try {
-                    const parsedJson = JSON.parse(responseText);
-                    if (typeof parsedJson === 'object' && parsedJson !== null && 'error' in parsedJson && 'devices' in parsedJson) {
-                         apiError = parsedJson.error; devices = parsedJson.devices; console.warn("[fetch] API reported dog error:", apiError); 
-                    } else if (Array.isArray(parsedJson)) { devices = parsedJson; console.log("[fetch] Parsed array:", devices); } 
-                    else { throw new Error("Response not array or error object."); }
-                } catch (parseError) { console.error("[fetch] JSON parse failed:", parseError); console.error("[fetch] Failed text:", responseText); throw new Error("Invalid JSON from API."); }
-                const grid = document.getElementById('device-grid'); grid.innerHTML = ''; 
-                if (apiError) { grid.innerHTML = `<p class="text-red-400 col-span-full">Dog Error: ${apiError}. Check logs.</p>`; } 
-                else if (devices.length === 0) { grid.innerHTML = '<p class="text-gray-500 col-span-full">Dog running, no devices detected/configured.</p>'; } 
-                else {
-                    devices.forEach(device => {
-                        const bubble = document.createElement('div'); const classes = getStatusClass(device.display_status); 
-                        bubble.className = classes.bubble; 
-                        bubble.innerHTML = `<span class="text-sm font-bold block truncate w-full">${device.miner_id || device.port_path || 'Unknown'}</span> <span class="${classes.pill}">${device.display_status}</span>`; 
-                        bubble.onclick = () => openModal(device); grid.appendChild(bubble);
-                    });
-                }
-                liveIndicator.classList.remove('bg-yellow-500'); liveIndicator.classList.add('bg-green-500'); 
-            } catch (error) {
-                console.error('[fetch] Error:', error); 
-                liveIndicator.classList.remove('bg-yellow-500', 'bg-green-500'); liveIndicator.classList.add('bg-red-500'); 
-                const grid = document.getElementById('device-grid');
-                grid.innerHTML = `<p class="text-red-400 col-span-full">Error loading data: ${error.message}. Is Dog running & API ok?</p>`;
-            }
-        }
-        
-        // --- getStatusClass (unchanged) ---
-        function getStatusClass(status) { /* ... */ 
-            const lowerStatus = String(status).toLowerCase();
-            const baseClasses = "h-24 p-4 rounded-lg text-white font-semibold shadow-md flex flex-col justify-between items-center text-center cursor-pointer transition-all duration-150 ease-in-out transform hover:scale-105";
-            const pillBase = "text-xs font-normal block mt-1 px-2 py-0.5 rounded-full";
-            if (lowerStatus === 'online') return { bubble: `${baseClasses} bg-green-700 hover:bg-green-600`, pill: `${pillBase} bg-green-200 text-green-900` };
-            if (lowerStatus === 'stale') return { bubble: `${baseClasses} bg-yellow-700 hover:bg-yellow-600`, pill: `${pillBase} bg-yellow-200 text-yellow-900` };
-            if (lowerStatus === 'offline') return { bubble: `${baseClasses} bg-red-800 hover:bg-red-700`, pill: `${pillBase} bg-red-200 text-red-900` };
-            if (lowerStatus === 'inactive' || lowerStatus === 'synced' || lowerStatus === 'captured' || lowerStatus === 'verified' || lowerStatus === 'onboarded') return { bubble: `${baseClasses} bg-gray-700 hover:bg-gray-600 opacity-60`, pill: `${pillBase} bg-gray-300 text-gray-800` };
-            if (lowerStatus === 'unconfigured') return { bubble: `${baseClasses} bg-blue-700 hover:bg-blue-600`, pill: `${pillBase} bg-blue-200 text-blue-900` };
-            if (lowerStatus.includes('error') || lowerStatus.includes('failed')) return { bubble: `${baseClasses} bg-red-800 hover:bg-red-700`, pill: `${pillBase} bg-red-200 text-red-900` };
-            return { bubble: `${baseClasses} bg-purple-700 hover:bg-purple-600`, pill: `${pillBase} bg-purple-200 text-purple-900` }; // Fallback
-        }
-
-        // --- Modal Management (unchanged from V.0.0.3.1) ---
-        function openModal(deviceData) { /* ... */ 
-            isModalOpen = true; currentModalData = deviceData; const status = String(deviceData.display_status).toLowerCase();
-            if (deviceData.type === 'miner') {
-                const isEffectivelyOnline = status === 'online'; 
-                if (isEffectivelyOnline) {
-                    document.getElementById('details-miner-id').textContent = deviceData.miner_id; document.getElementById('details-status').textContent = deviceData.display_status; document.getElementById('details-pool').textContent = deviceData.pool_url || 'N/A'; document.getElementById('details-wallet').textContent = deviceData.wallet_address || 'N/A'; document.getElementById('details-version').textContent = deviceData.version || 'N/A'; document.getElementById('details-dev-path').textContent = deviceData.dev_path || 'N/A'; document.getElementById('details-port-path').textContent = deviceData.port_path || 'N/A'; document.getElementById('details-serial').textContent = deviceData.serial_number || 'N/A'; document.getElementById('details-location').textContent = deviceData.location_notes || 'N/A';
-                    document.getElementById('details-modal').classList.remove('hidden');
-                } else {
-                    document.getElementById('actions-miner-id').textContent = deviceData.miner_id; document.getElementById('actions-status').textContent = deviceData.display_status; document.getElementById('actions-state').textContent = deviceData.state_msg || 'N/A'; document.getElementById('actions-dev-path').textContent = deviceData.dev_path || 'N/A'; document.getElementById('actions-port-path').textContent = deviceData.port_path || 'N/A'; document.getElementById('actions-serial').textContent = deviceData.serial_number || 'N/A'; document.getElementById('actions-location').textContent = deviceData.location_notes || 'N/A';
-                    document.getElementById('actions-modal').classList.remove('hidden');
-                }
-            } else if (deviceData.type === 'stray') {
-                document.getElementById('config-dev-path').textContent = deviceData.dev_path; document.getElementById('config-port-path').textContent = deviceData.port_path; document.getElementById('config-serial').textContent = deviceData.serial_number; document.getElementById('config-vendor').textContent = deviceData.vendor_id; document.getElementById('config-product').textContent = deviceData.product_id || 'N/A'; 
-                document.getElementById('onboard_miner_id').value = ''; document.getElementById('onboard_location_notes').value = ''; document.getElementById('onboard_currency').value = 'BTC'; 
-                const capturedInfoDiv = document.getElementById('config-captured-info');
-                if (deviceData.pool_url || deviceData.wallet_address || deviceData.version || deviceData.chipset || deviceData.mac_address) {
-                    document.getElementById('config-captured-chipset').textContent = deviceData.chipset || 'N/A'; document.getElementById('config-captured-mac').textContent = deviceData.mac_address || 'N/A'; document.getElementById('config-captured-pool').textContent = deviceData.pool_url || 'N/A'; document.getElementById('config-captured-wallet').textContent = deviceData.wallet_address || 'N/A'; document.getElementById('config-captured-version').textContent = deviceData.version || 'N/A';
-                    capturedInfoDiv.classList.remove('hidden');
-                    document.getElementById('config-form-pool').value = deviceData.pool_url || ''; document.getElementById('config-form-wallet').value = deviceData.wallet_address || ''; document.getElementById('config-form-version').value = deviceData.version || ''; document.getElementById('config-form-chipset').value = deviceData.chipset || ''; document.getElementById('config-form-mac').value = deviceData.mac_address || ''; 
-                } else {
-                    capturedInfoDiv.classList.add('hidden');
-                    document.getElementById('config-form-pool').value = ''; document.getElementById('config-form-wallet').value = ''; document.getElementById('config-form-version').value = ''; document.getElementById('config-form-chipset').value = ''; document.getElementById('config-form-mac').value = ''; 
-                }
-                document.getElementById('config-form-dev-path').value = deviceData.dev_path; document.getElementById('config-form-port-path').value = deviceData.port_path; document.getElementById('config-form-serial').value = deviceData.serial_number; document.getElementById('config-form-vendor').value = deviceData.vendor_id; document.getElementById('config-form-product').value = deviceData.product_id || '';
-                document.getElementById('configure-modal').classList.remove('hidden');
-            }
-        }
-        function closeModal(modalId) { /* ... */ document.getElementById(modalId).classList.add('hidden'); isModalOpen = false; currentModalData = null; setTimeout(fetchDeviceData, 50); }
-        function showEditForm() { /* ... */ }
-        function showDeleteForm() { /* ... */ }
-
-        // --- AJAX Actions (unchanged) ---
-        async function onboardStray(event) { /* ... */ 
-            event.preventDefault(); const form = event.target; const formData = new FormData(form); const submitButton = form.querySelector('button[type="submit"]'); submitButton.disabled = true; submitButton.textContent = 'Adding...';
-            try {
-                const response = await fetch("{{ url_for('main.onboard_stray_miner') }}", { method: 'POST', body: formData }); const result = await response.json();
-                if (response.ok && result.success) { showAjaxFlash(result.message, 'success'); closeModal('configure-modal'); } 
-                else { showAjaxFlash(result.message || 'Unknown error.', 'error'); }
-            } catch (error) { console.error('Onboard error:', error); showAjaxFlash('Network error.', 'error'); } 
-            finally { if (submitButton) { submitButton.disabled = false; submitButton.textContent = 'Add to Flock'; } }
-        }
-        async function runMinerAction(actionButton) { /* ... */ 
-            console.log("[runAction] Called."); if (!currentModalData) { console.log("[runAction] No data."); return; }
-            const detailsModalActive = !document.getElementById('details-modal').classList.contains('hidden'); const actionsModalActive = !document.getElementById('actions-modal').classList.contains('hidden'); const configureModalActive = !document.getElementById('configure-modal').classList.contains('hidden');
-            let originalButtonText = 'Reset & Capture'; if (configureModalActive) { originalButtonText = 'Reset & Capture Config'; }
-            actionButton.disabled = true; actionButton.textContent = 'Working...'; console.log("[runAction] Button disabled.");
-            const url = `{{ url_for('main.run_miner_action') }}`; const payload = { action: 'reset_capture', dev_path: currentModalData.dev_path, port_path: currentModalData.port_path, serial_number: currentModalData.serial_number, miner_db_id: currentModalData.type === 'miner' ? currentModalData.id : null }; console.log("[runAction] Payload:", payload); 
-            try {
-                console.log("[runAction] Fetching:", url); const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); console.log("[runAction] Status:", response.status); 
-                const result = await response.json(); console.log("[runAction] Result:", result); 
-                if (response.ok && result.success) {
-                    showAjaxFlash(result.message, 'success');
-                    let modalToClose = null; if (detailsModalActive) modalToClose = 'details-modal'; else if (actionsModalActive) modalToClose = 'actions-modal'; else if (configureModalActive) modalToClose = 'configure-modal';
-                    if (result.data && modalToClose === 'configure-modal') { console.log("[runAction] Success (stray data). Merging & reopening..."); closeModal(modalToClose); currentModalData = { ...currentModalData, ...result.data }; setTimeout(() => openModal(currentModalData), 100); } 
-                    else if (result.data && (modalToClose === 'details-modal' || modalToClose === 'actions-modal')) { console.log("[runAction] Success (miner data). Closing..."); if (modalToClose) closeModal(modalToClose); } 
-                    else { console.log("[runAction] Success (no data/not stray). Closing..."); if (modalToClose) closeModal(modalToClose); }
-                } else { console.error("[runAction] Backend failed:", result.message); showAjaxFlash(result.message || 'Action failed.', 'error'); }
-            } catch (error) { console.error("[runAction] Network/parse error:", error); showAjaxFlash('Network error.', 'error'); } 
-            finally { if (actionButton) { actionButton.disabled = false; actionButton.textContent = originalButtonText; console.log("[runAction] Finished. Button re-enabled."); } }
-        }
-
-        // --- showAjaxFlash (unchanged) ---
-        function showAjaxFlash(message, category = 'success') { /* ... */ }
-
-        // --- Legacy Functions (Pools, Addresses - unchanged) ---
-        function openDeleteModal(deleteUrl, itemType) { /* ... */ }
-        const dynamicRadio = document.getElementById('user_type_dynamic'); /* ... */
-        function updateUserTypeVisibility() { /* ... */ }
-        if(dynamicRadio) dynamicRadio.addEventListener('change', updateUserTypeVisibility); /* ... */
-        
-        // --- Page Initializer (unchanged) ---
-        document.addEventListener('DOMContentLoaded', function() { /* ... */ 
-            const hash = window.location.hash.substring(1); if (hash) { showPane(hash); } else { showPane('miners'); } updateUserTypeVisibility(); fetchDeviceData(); setInterval(fetchDeviceData, 3000); 
-            const flashMessages = document.querySelectorAll('[id^="flash-message-"]'); flashMessages.forEach(function(message) { setTimeout(function() { message.style.opacity = '0'; setTimeout(function() { message.style.display = 'none'; }, 500); }, 5000); });
-        });
-    </script>
+    <!-- Link to the external JavaScript file -->
+    <!-- 'defer' ensures the script runs after the HTML is parsed -->
+    <script src="{{ url_for('static', filename='js/config_manager.js') }}" defer></script>
 </body>
 </html>
 

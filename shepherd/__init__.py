@@ -12,9 +12,21 @@ def create_app(test_config=None):
     from . import database
     database.init_db()
     
-    # Register the routes (web pages) from our routes file
-    from . import routes
-    app.register_blueprint(routes.bp)
+    # --- NEW: Register all our new blueprints ---
 
-    print("Flask app created and configured.")
+    # Register the page-serving routes
+    from . import view_routes
+    app.register_blueprint(view_routes.bp)
+
+    # Register the API routes (with /api prefix)
+    from . import api_routes
+    app.register_blueprint(api_routes.bp)
+
+    # Register the action/form routes
+    from . import action_routes
+    app.register_blueprint(action_routes.bp)
+    
+    # The old 'routes.py' is no longer imported or used.
+
+    print("Flask app created and configured with modular routes.")
     return app
