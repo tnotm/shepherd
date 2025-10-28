@@ -1,12 +1,9 @@
 # shepherd/routes.py
-# V.0.0.3.3
+# V.0.0.3.4
 # Description: Main routing file for the Shepherd Flask application.
-# FIXED: run_miner_action now correctly updates stray_devices using original USB serial key
-#        and stores captured MAC in the dedicated mac_address column.
 
 import sqlite3
 import os
-# ... other imports remain the same ...
 import io
 import csv
 import json
@@ -27,7 +24,6 @@ except ImportError:
 bp = Blueprint('main', __name__)
 
 # --- Configuration & Helpers ---
-# ... (Config vars remain the same) ...
 DATA_DIR = os.path.expanduser('~/shepherd_data')
 PRICE_CACHE_FILE = os.path.join(DATA_DIR, 'btc_price.json')
 DEVICE_STATE_FILE = os.path.join(DATA_DIR, 'device_state.json') 
@@ -40,11 +36,8 @@ SHEPHERD_SERVICES = [
 INGESTOR_SERVICE_NAME = 'shepherd-ingestor.service' 
 INGESTOR_POLL_INTERVAL = 15 
 
-
-# ... (get_btc_price_data, format_uptime, get_service_statuses, _get_herd_data remain unchanged) ...
 def get_btc_price_data():
     """Reads the cached BTC price data."""
-    # ... unchanged ...
     try:
         with open(PRICE_CACHE_FILE, 'r') as f:
             data = json.load(f)
@@ -58,7 +51,6 @@ def get_btc_price_data():
 
 def format_uptime(seconds):
     """Formats a duration in seconds into a human-readable string."""
-    # ... unchanged ...
     m, s = divmod(seconds, 60)
     h, m = divmod(m, 60)
     d, h = divmod(h, 24)
@@ -71,11 +63,9 @@ def format_uptime(seconds):
 
 def get_service_statuses():
     """Checks the status of all shepherd-related systemd services."""
-    # ... unchanged ...
     statuses = {}
     for service in SHEPHERD_SERVICES:
         try:
-            # Use is-active and is-failed for more robust status checking
             active_result = subprocess.run(['systemctl', 'is-active', service], capture_output=True, text=True)
             failed_result = subprocess.run(['systemctl', 'is-failed', service], capture_output=True, text=True)
             
@@ -131,7 +121,6 @@ def _get_herd_data():
 
 
 # --- Main & Dashboard Routes ---
-# ... (unchanged routes: /, /kiosk, /dashboards, /dash/health, /dash_nerdminer, /dash_matrix) ...
 @bp.route('/')
 def index(): return render_template('index.html')
 @bp.route('/kiosk') 
@@ -148,14 +137,12 @@ def dash_nerdminer():
 def dash_matrix(): return render_template('dash_matrix.html')
 
 # --- Farm Detail Routes ---
-# ... (unchanged routes: /details, /details/system, /details/miner/<miner_id>) ...
 @bp.route('/details')
 def details(): return render_template('details.html')
 @bp.route('/details/system')
 def details_system():
     stats={'psutil_installed': bool(psutil)}; 
     if psutil: stats['hostname'] = socket.gethostname(); 
-    # ... rest of psutil logic ...
     return render_template('details_system.html', stats=stats)
 @bp.route('/details/miner/<int:miner_id>')
 def details_miner(miner_id):
@@ -180,7 +167,6 @@ def details_miner(miner_id):
         with open(DEVICE_STATE_FILE, 'r') as f:
             device_state = json.load(f)
         
-        # The file can be a list or a dict with a 'devices' key
         devices_list = device_state.get("devices", device_state) if isinstance(device_state, dict) else device_state
         
         live_miner_data = next((d for d in devices_list if d.get('id') == miner_id), None)
@@ -263,7 +249,6 @@ def edit_miner(miner_id):
 # Onboard Stray Route
 @bp.route('/miners/onboard_stray', methods=['POST'])
 def onboard_stray_miner():
-    # ... (Logic mostly unchanged from V.0.0.3.1 - sets status based on captured data, deletes stray) ...
     form_data = request.form; miner_id = form_data.get('miner_id').strip(); currency = form_data.get('currency'); dev_path = form_data.get('dev_path'); port_path = form_data.get('port_path'); attrs_serial = form_data.get('serial_number'); vendor_id = form_data.get('vendor_id'); product_id = form_data.get('product_id'); location_notes = form_data.get('location_notes', '').strip(); pool_url = form_data.get('pool_url'); wallet_address = form_data.get('wallet_address'); version = form_data.get('version'); mac_address = form_data.get('mac_address'); chipset = form_data.get('chipset') 
     initial_status = 'Active' if (pool_url or wallet_address or version or mac_address or chipset) else 'Inactive'
     initial_state = 'Onboarded (Active)' if initial_status == 'Active' else 'Onboarded (Inactive)'
@@ -284,7 +269,7 @@ def onboard_stray_miner():
             print(f"[Onboard] Deleting stray ({port_path}, {attrs_serial})") 
             cursor = conn.execute("DELETE FROM stray_devices WHERE port_path = ? AND serial_number = ?;", (port_path, attrs_serial))
             if cursor.rowcount == 0:
-                 if mac_address: # Try deleting using MAC as a fallback key if initial delete failed
+                 if mac_address:
                       print(f"[Onboard] Trying delete stray with MAC key ({port_path}, {mac_address})")
                       cursor = conn.execute("DELETE FROM stray_devices WHERE port_path = ? AND mac_address = ?;", (port_path, mac_address))
                       if cursor.rowcount == 0: print(f"[Onboard] WARN: Delete stray failed for both keys.")
@@ -301,10 +286,8 @@ def onboard_stray_miner():
          if conn: conn.close()
 
 
-# ... (Pools, Addresses, Service Management routes remain unchanged) ...
 @bp.route('/pools/add', methods=['POST'])
 def add_pool():
-    # ... unchanged ...
     form_data = request.form
     user_type = form_data.get('user_type')
     pool_user = form_data.get('dynamic_user_address') if user_type == 'dynamic' else form_data.get('text_user_address')
@@ -329,18 +312,13 @@ def add_pool():
             conn.close()
     return redirect(url_for('main.config') + '#pools')
 
-# ... other pool/address routes ...
 @bp.route('/service/restart/<service_name>', methods=['POST'])
 def restart_service(service_name):
-     # ... unchanged ...
      if service_name in SHEPHERD_SERVICES:
          try: subprocess.run(['sudo', 'systemctl', 'restart', service_name], check=True); flash(f"Restarted {service_name}.", 'success')
          except Exception as e: flash(f"Failed to restart {service_name}: {e}", 'error')
      else: flash("Invalid service name.", 'error')
      return redirect(url_for('main.config') + '#developer')
-
-# ... restart_all_services ...
-
 
 # --- Diagnostic Routes ---
 @bp.route('/raw_logs')
@@ -397,11 +375,10 @@ def run_miner_action():
                  if miner_db_id: 
                      cursor = conn.execute("SELECT status FROM miners WHERE id = ?", (miner_db_id,)); result = cursor.fetchone(); original_status = result['status'] if result else None
                      conn.execute("UPDATE miners SET status = 'Resetting', state = 'Awaiting Reset' WHERE id = ?;", (miner_db_id,))
-                 else: # Stray device
-                     # ** Use original_usb_serial as the key to update state **
+                 else:
                      conn.execute("UPDATE stray_devices SET state = 'Awaiting Reset' WHERE port_path = ? AND serial_number = ?;", (port_path, original_usb_serial))
                      original_status = 'Inactive' 
-            conn.close() # Close connection before wait
+            conn.close()
             wait_time = INGESTOR_POLL_INTERVAL + 1; print(f"[Action] Waiting {wait_time}s..."); time.sleep(wait_time)
         except Exception as e: print(f"[Action] ERROR pre-reset: {e}"); return jsonify({'success': False, 'message': f"Error preparing reset: {e}"}), 500
         
@@ -417,12 +394,11 @@ def run_miner_action():
                 time.sleep(1.5) 
             except Exception as e: raise Exception(f"esptool.py failed: {e}") from e
             
-            try: # --- Capture ---
+            try:
                 print(f"[Action] Opening port for capture..."); ser = serial.Serial(dev_path, 115200, timeout=1.0); print(f"[Action] Port open.")
                 start_time=time.time(); capture_duration=30; lines=[]; json_buffer=""; parsing_state="SCANNING"; config_found=False
                 print(f"[Action] Capture loop ({capture_duration}s)...") 
                 while time.time() - start_time < capture_duration:
-                    # ... capture loop logic ...
                     line_bytes = ser.readline(); 
                     if not line_bytes: time.sleep(0.01); continue 
                     try:
@@ -445,7 +421,7 @@ def run_miner_action():
                     except serial.SerialException as read_e: print(f"[Action] Serial read error: {read_e}."); break
                     except Exception as loop_e: print(f"[Action] Capture loop error: {loop_e}"); import traceback; traceback.print_exc(); break
                 print(f"[Action] Capture loop finished.")
-            finally: # Ensure port closed
+            finally:
                 if ser and ser.is_open:
                     try:
                         ser.close()
@@ -459,16 +435,15 @@ def run_miner_action():
             conn = get_db_connection()
             if not conn: raise Exception("DB connection failed post-capture")
             with conn:
-                 if miner_db_id: # Update Known Miner
+                 if miner_db_id:
                      update_fields={'mac_address': mac_address, 'chipset': chipset_info, 'status': 'Active' if config_found else original_status, 'state': 'Synced' if config_found else 'Capture Failed', 'last_seen': datetime.now(UTC).isoformat()}
                      if config_found and captured_data: update_fields.update({'pool_url': captured_data.get('pool_url'), 'wallet_address': captured_data.get('wallet_address'), 'nerdminer_vrs': captured_data.get('version')})
                      set_clauses = [f"{field} = ?" for field in update_fields.keys()]; values = list(update_fields.values()) + [miner_db_id]
                      sql = f"UPDATE miners SET {', '.join(set_clauses)} WHERE id = ?;"; print(f"[Action] SQL: {sql} Vals: {values}") 
                      conn.execute(sql, values); print(f"[Action] Miner {miner_db_id} DB updated.") 
                      reset_capture_success = True 
-                 else: # Update Stray Device
+                 else:
                      print(f"[Action] Updating stray (Key: {port_path}/{original_usb_serial}). Storing MAC: {mac_address}")
-                     # ** Use original_usb_serial in WHERE clause **
                      conn.execute("""
                          UPDATE stray_devices 
                          SET chipset = ?, mac_address = ?, dumped_pool_url = ?, 
@@ -482,23 +457,19 @@ def run_miner_action():
                          captured_data.get('version') if config_found else None, 
                          'Inactive', 'Captured' if config_found else 'Capture Failed', 
                          datetime.now(UTC).isoformat(),
-                         port_path, original_usb_serial # WHERE clause uses original key
+                         port_path, original_usb_serial
                      ))
-                     # Check if update worked, if not, maybe INSERT? (Shouldn't happen if called from UI)
                      if conn.changes() == 0:
                           print(f"[Action] WARN: Update failed for stray {port_path}/{original_usb_serial}. Row might not exist?")
-                          # Optionally try INSERT here as a fallback if needed
                      else:
                          print(f"[Action] Stray device DB updated.")
 
                      if not captured_data: captured_data = {} 
-                     # Update response data
                      captured_data.update({'mac_address': mac_address, 'chipset': chipset_info, 
-                                           'serial_number': original_usb_serial}) # Send original serial back
+                                           'serial_number': original_usb_serial})
                      reset_capture_success = True 
             conn.close() 
 
-            # --- Return result ---
             if reset_capture_success:
                  message = f"Reset {dev_path}, captured MAC/Chipset."; status_code = 200
                  if config_found: message += " Config found."
@@ -507,18 +478,17 @@ def run_miner_action():
                  return jsonify({ 'success': (config_found or mac_address or chipset_info), 'message': message, 'data': captured_data or {} }), status_code
             else: return jsonify({'success': False, 'message': f"Failed before DB update."}), 500
             
-        except Exception as e: # --- Outer Error Handling ---
+        except Exception as e:
             error_message = f"Error: {e}"; status_code = 500
-            # ... (More specific error message logic) ...
             if isinstance(e, FileNotFoundError): error_message = "'esptool.py' not found..."
             elif isinstance(e, subprocess.TimeoutExpired): error_message = f"Reset/Read MAC timed out..."
             elif isinstance(e, subprocess.CalledProcessError): error_message = f"esptool failed: {e.stderr}"
             elif isinstance(e, serial.SerialException): error_message = f"Serial error after reset: {e}."
             elif "Port still busy" in str(e): error_message = str(e); status_code=409 
             print(f"[Action] Overall Error: {error_message}") 
-            conn = get_db_connection() # Try connection for state update
+            conn = get_db_connection()
             if conn:
-                try: # Best effort state update
+                try:
                     with conn:
                         state_to_set = 'Action Error'; 
                         if 'Serial error' in error_message: state_to_set = 'Capture Serial Error'
@@ -530,7 +500,7 @@ def run_miner_action():
                 finally: conn.close()
             return jsonify({'success': False, 'message': error_message}), status_code
             
-        finally: # --- Restore Status ---
+        finally:
              conn = get_db_connection()
              if conn:
                  try:
@@ -539,7 +509,7 @@ def run_miner_action():
                           final_state = 'Synced' if reset_capture_success and config_found else ('Capture Failed' if reset_capture_success else 'Action Error') 
                           print(f"[Action] Finalizing status for miner {miner_db_id} to '{final_status}' ('{final_state}')...")
                           with conn: conn.execute("UPDATE miners SET status = ?, state = ? WHERE id = ? AND status = 'Resetting';", (final_status, final_state, miner_db_id))
-                     elif not miner_db_id: # Stray
+                     elif not miner_db_id:
                           final_state = 'Captured' if reset_capture_success and config_found else ('Capture Failed' if reset_capture_success else 'Action Error')
                           print(f"[Action] Finalizing state for stray {port_path}/{original_usb_serial} to '{final_state}'...")
                           with conn: conn.execute("UPDATE stray_devices SET state = ? WHERE port_path = ? AND serial_number = ?;", (final_state, port_path, original_usb_serial)) # Use original key
@@ -555,7 +525,6 @@ def api_herd_data(): data = _get_herd_data(); return jsonify(data)
 
 @bp.route('/api/device_state')
 def api_device_state():
-    # ... (unchanged) ...
     if not os.path.exists(DEVICE_STATE_FILE): print(f"[API] ERROR: File not found: {DEVICE_STATE_FILE}"); return jsonify([]) 
     try:
         file_size = os.path.getsize(DEVICE_STATE_FILE); 
