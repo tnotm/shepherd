@@ -1,6 +1,6 @@
-<!-- 
-Version: 0.0.5.1
-Description: Main configuration page for Shepherd.
+<!--
+Version: 0.0.3.3
+REFACTOR: Re-added data-* attributes to the body tag to fix JS error.
 REFACTOR: Extracted all modals into partial templates and replaced with include tags.
 -->
 <!DOCTYPE html>
@@ -10,19 +10,22 @@ REFACTOR: Extracted all modals into partial templates and replaced with include 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Configuration - The Shepherd</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/shepherd_styles.css') }}">
     <style>
         .nav-link.active { background-color: #0e7490; color: white; }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-200 font-sans" 
-      data-url-api-state="{{ url_for('api.api_device_state') }}"
-      data-url-action="{{ url_for('actions.run_miner_action') }}">
+<body class="bg-gray-900 text-gray-200 font-sans"
+    data-url-api-device-state="{{ url_for('api.api_device_state') }}"
+    data-url-onboard-stray="{{ url_for('actions.onboard_stray_miner') }}"
+    data-url-miner-action="{{ url_for('actions.run_miner_action') }}">
     <div class="container mx-auto p-4 md:p-8">
         <!-- ... Header ... -->
          <header class="flex justify-between items-center mb-6 border-b border-gray-700 pb-4">
             <h1 class="text-3xl font-bold text-cyan-400">Settings</h1>
             <a href="{{ url_for('main.index') }}" class="bg-gray-700 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded transition-colors">Back to Dashboard</a>
         </header>
+
 
         <!-- ... Flash Messages ... -->
         <div id="flash-container">
@@ -72,39 +75,47 @@ REFACTOR: Extracted all modals into partial templates and replaced with include 
                     </div>
                 </div>
 
-                <!-- ... Pools, Addresses, Developer Panes (HTML structure unchanged) ... -->
+                <!-- ... Pools, Addresses, Developer Panes ... -->
                 <div id="pane-pools" class="content-pane hidden bg-gray-800 p-6 rounded-lg">
+                    <!-- Placeholder for Pools content -->
                      <h2 class="text-2xl font-semibold mb-4 text-cyan-300">Manage Mining Pools</h2>
-                     <div class="mb-8 p-4 border border-gray-700 rounded-md"> /* Form */ </div>
-                     <div> /* Table */ </div>
+                     <div class="mb-8 p-4 border border-gray-700 rounded-md">
+                        <p class="text-gray-400">Pool management form will go here.</p>
+                     </div>
+                     <div>
+                        <p class="text-gray-400">Table of existing pools will go here.</p>
+                     </div>
                 </div>
                 <div id="pane-addresses" class="content-pane hidden bg-gray-800 p-6 rounded-lg">
+                    <!-- Placeholder for Addresses content -->
                      <h2 class="text-2xl font-semibold mb-4 text-cyan-300">Manage Coin Addresses</h2>
-                     <div class="mb-8 p-4 border border-gray-700 rounded-md"> /* Form */ </div>
-                     <div> /* Table */ </div>
+                     <div class="mb-8 p-4 border border-gray-700 rounded-md">
+                        <p class="text-gray-400">Address management form will go here.</p>
+                     </div>
+                     <div>
+                        <p class="text-gray-400">Table of existing addresses will go here.</p>
+                     </div>
                 </div>
                 <div id="pane-developer" class="content-pane hidden bg-gray-800 p-6 rounded-lg">
+                    <!-- Placeholder for Developer Options content -->
                      <h2 class="text-2xl font-semibold mb-4 text-cyan-300">Developer Options</h2>
-                     <div class="space-y-6"> /* Service Control */ </div>
+                     <div class="space-y-6">
+                        <p class="text-gray-400">Service status and restart buttons will go here.</p>
+                     </div>
                 </div>
 
             </main>
         </div>
     </div>
 
-    <!-- 
-      MODALS
-      All modal HTML is now extracted into partial files for cleanliness.
-    -->
+    <!-- MODALS -->
     {% include '_modal_details.html' %}
     {% include '_modal_actions.html' %}
+    {% include '_modal_configure.html' %}
     {% include '_modal_delete.html' %}
     {% include '_modal_edit.html' %}
-    {% include '_modal_configure.html' %}
-    
-    <!-- Link to the external JavaScript file -->
-    <script src="{{ url_for('static', filename='js/config_manager.js') }}" defer></script>
+
+    <script src="{{ url_for('static', filename='js/config_manager.js') }}"></script>
 </body>
 </html>
-
 

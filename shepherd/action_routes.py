@@ -1,22 +1,33 @@
 # shepherd/action_routes.py
-# V.1.0.0
-# Description: Handles all POST actions (form submissions, AJAX actions).
-
+# V.0.1.0
 import sqlite3
 import os
 import io
 import csv
 import json
+import socket
 import subprocess
 import serial 
 import time 
 import re 
-from flask import Blueprint, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from .database import get_db_connection
-from datetime import datetime, timedelta, UTC
-from .helpers import SHEPHERD_SERVICES, INGESTOR_POLL_INTERVAL
+from datetime import datetime, timedelta, UTC 
+
+# This is the new, local constant to replace the imported one
+DOG_RELEASE_WAIT_SECONDS = 3.0 
+
+# We no longer need: INGESTOR_POLL_INTERVAL
+from .helpers import SHEPHERD_SERVICES
 
 bp = Blueprint('actions', __name__)
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
+# --- Action Routes ---
 
 @bp.route('/miners/delete/<int:miner_id>', methods=['POST'])
 def delete_miner(miner_id):
@@ -141,7 +152,6 @@ def restart_service(service_name):
      else: flash("Invalid service name.", 'error')
      return redirect(url_for('main.config') + '#developer')
 
-
 # --- Miner Action Route ---
 @bp.route('/miners/action', methods=['POST'])
 def run_miner_action():
@@ -167,7 +177,7 @@ def run_miner_action():
                      conn.execute("UPDATE stray_devices SET state = 'Awaiting Reset' WHERE port_path = ? AND serial_number = ?;", (port_path, original_usb_serial))
                      original_status = 'Inactive' 
             conn.close()
-            wait_time = INGESTOR_POLL_INTERVAL + 1; print(f"[Action] Waiting {wait_time}s..."); time.sleep(wait_time)
+            wait_time = DOG_RELEASE_WAIT_SECONDS; print(f"[Action] Waiting {wait_time}s..."); time.sleep(wait_time)
         except Exception as e: print(f"[Action] ERROR pre-reset: {e}"); return jsonify({'success': False, 'message': f"Error preparing reset: {e}"}), 500
         
         # --- Phase 2: Run esptool and Capture ---
@@ -200,22 +210,53 @@ def run_miner_action():
                                 try:
                                     clean_buffer = re.sub(r",\s*}","}",json_buffer); clean_buffer = re.sub(r",\s*]"," ]",clean_buffer); 
                                     parsed_config = json.loads(clean_buffer); 
-                                    captured_data = {"pool_url":parsed_config.get("poolString"), "wallet_address":parsed_config.get("btcString"), "version":parsed_config.get("nmVersion", parsed_config.get("FirmwareVersion"))}
-                                    if not captured_data["pool_url"] or not captured_data["wallet_address"]: print("[Action] JSON missing fields."); parsing_state="SCANNING"; json_buffer=""; continue 
-                                    config_found=True; print(f"[Action] Parsed config: {captured_data}"); break 
-                                except json.JSONDecodeError as json_e: print(f"[Action] JSON parse failed: {json_e}"); parsing_state="SCANNING"; json_buffer="" 
-                            elif len(json_buffer)>4096: print("[Action] JSON buffer exceeded."); parsing_state="SCANNING"; json_buffer=""
-                    except UnicodeDecodeError: continue 
-                    except serial.SerialException as read_e: print(f"[Action] Serial read error: {read_e}."); break
-                    except Exception as loop_e: print(f"[Action] Capture loop error: {loop_e}"); import traceback; traceback.print_exc(); break
+                                    
+                                    # *** NEW VERSION LOGIC ***
+                                    # Explicitly get both potential version keys
+                                    nm_version = parsed_config.get("nmVersion")
+                                    firmware_version = parsed_config.get("FirmwareVersion")
+                                    # Choose the first non-empty one found
+                                    version_to_use = nm_version if nm_version else firmware_version
+                                    # *** END NEW VERSION LOGIC ***
+
+                                    captured_data = {
+                                        "pool_url": parsed_config.get("poolString"), 
+                                        "wallet_address": parsed_config.get("btcString"), 
+                                        "version": version_to_use # Use the explicitly chosen version
+                                    }
+                                    # Check if essential fields were captured
+                                    if not captured_data["pool_url"] or not captured_data["wallet_address"]: 
+                                        print("[Action] JSON missing pool or wallet fields."); 
+                                        parsing_state="SCANNING"; json_buffer=""; captured_data=None; continue # Reset and keep scanning
+                                    
+                                    config_found=True; print(f"[Action] Parsed config: {captured_data}"); break # Success! Exit loop.
+
+                                except json.JSONDecodeError as json_e: 
+                                    print(f"[Action] JSON parse failed: {json_e}"); 
+                                    parsing_state="SCANNING"; json_buffer=""; captured_data=None; # Reset and keep scanning
+                            
+                            # Prevent infinite buffer growth if '}' is never found
+                            elif len(json_buffer)>4096: 
+                                print("[Action] JSON buffer exceeded limit."); 
+                                parsing_state="SCANNING"; json_buffer=""; captured_data=None; # Reset and keep scanning
+
+                    except UnicodeDecodeError: 
+                        continue # Ignore lines that can't be decoded
+                    except serial.SerialException as read_e: 
+                        print(f"[Action] Serial read error during capture: {read_e}."); break # Exit capture loop
+                    except Exception as loop_e: 
+                        print(f"[Action] Unexpected capture loop error: {loop_e}"); 
+                        import traceback; traceback.print_exc(); break # Exit capture loop
+                
                 print(f"[Action] Capture loop finished.")
+
             finally:
                 if ser and ser.is_open:
                     try:
                         ser.close()
-                        print(f"[{thread_name}] Port closed after capture.")
+                        print(f"[Action] Port closed after capture.")
                     except Exception as e:
-                        print(f"[{thread_name}] Error closing serial port after capture: {e}")
+                        print(f"[Action] Error closing serial port after capture: {e}")
                 ser = None
                 
             # --- DB Update ---
@@ -225,84 +266,145 @@ def run_miner_action():
             with conn:
                  if miner_db_id:
                      update_fields={'mac_address': mac_address, 'chipset': chipset_info, 'status': 'Active' if config_found else original_status, 'state': 'Synced' if config_found else 'Capture Failed', 'last_seen': datetime.now(UTC).isoformat()}
-                     if config_found and captured_data: update_fields.update({'pool_url': captured_data.get('pool_url'), 'wallet_address': captured_data.get('wallet_address'), 'nerdminer_vrs': captured_data.get('version')})
+                     # Only update config fields if they were successfully captured
+                     if config_found and captured_data: 
+                         update_fields.update({
+                             'pool_url': captured_data.get('pool_url'), 
+                             'wallet_address': captured_data.get('wallet_address'), 
+                             'nerdminer_vrs': captured_data.get('version') # Use the captured version
+                         })
                      set_clauses = [f"{field} = ?" for field in update_fields.keys()]; values = list(update_fields.values()) + [miner_db_id]
                      sql = f"UPDATE miners SET {', '.join(set_clauses)} WHERE id = ?;"; print(f"[Action] SQL: {sql} Vals: {values}") 
                      conn.execute(sql, values); print(f"[Action] Miner {miner_db_id} DB updated.") 
                      reset_capture_success = True 
-                 else:
-                     print(f"[Action] Updating stray (Key: {port_path}/{original_usb_serial}). Storing MAC: {mac_address}")
-                     conn.execute("""
+                 else: # This is a stray device
+                     print(f"[Action] Updating stray (Key: {port_path}/{original_usb_serial}). Storing MAC: {mac_address}, Chipset: {chipset_info}")
+                     cursor = conn.execute("""
                          UPDATE stray_devices 
-                         SET chipset = ?, mac_address = ?, dumped_pool_url = ?, 
-                             dumped_wallet_address = ?, dumped_firmware_version = ?, 
+                         SET chipset = ?, mac_address = ?, 
+                             dumped_pool_url = ?, dumped_wallet_address = ?, dumped_firmware_version = ?, 
                              status = ?, state = ?, discovered_at = ? 
                          WHERE port_path = ? AND serial_number = ?;
                      """, (
                          chipset_info, mac_address, 
                          captured_data.get('pool_url') if config_found else None, 
                          captured_data.get('wallet_address') if config_found else None, 
-                         captured_data.get('version') if config_found else None, 
-                         'Inactive', 'Captured' if config_found else 'Capture Failed', 
+                         captured_data.get('version') if config_found else None, # Use captured version
+                         'Inactive', # Strays go back to Inactive after capture
+                         'Captured' if config_found else 'Capture Failed', 
                          datetime.now(UTC).isoformat(),
                          port_path, original_usb_serial
                      ))
-                     if conn.changes() == 0:
+                     if cursor.rowcount == 0:
                           print(f"[Action] WARN: Update failed for stray {port_path}/{original_usb_serial}. Row might not exist?")
                      else:
                          print(f"[Action] Stray device DB updated.")
 
+                     # Prepare data to send back to UI, ensuring captured_data exists
                      if not captured_data: captured_data = {} 
-                     captured_data.update({'mac_address': mac_address, 'chipset': chipset_info, 
-                                           'serial_number': original_usb_serial})
+                     # Always include MAC/Chipset/Serial in the return data
+                     captured_data.update({
+                         'mac_address': mac_address, 
+                         'chipset': chipset_info, 
+                         'serial_number': original_usb_serial 
+                     })
                      reset_capture_success = True 
             conn.close() 
 
+            # --- Prepare and Send Response ---
             if reset_capture_success:
                  message = f"Reset {dev_path}, captured MAC/Chipset."; status_code = 200
                  if config_found: message += " Config found."
+                 # Check if MAC or Chipset were found, even if config failed
                  elif mac_address or chipset_info: message += " Failed to capture Config."
-                 else: message = f"Reset {dev_path}, failed capture."; status_code = 500
-                 return jsonify({ 'success': (config_found or mac_address or chipset_info), 'message': message, 'data': captured_data or {} }), status_code
-            else: return jsonify({'success': False, 'message': f"Failed before DB update."}), 500
+                 else: 
+                      message = f"Reset {dev_path}, failed capture (No Config, MAC, or Chipset found)."; status_code = 500 # More specific failure
+                 
+                 # Determine overall success based on whether *anything* useful was found
+                 overall_success = bool(config_found or mac_address or chipset_info)
+                 
+                 return jsonify({ 
+                     'success': overall_success, 
+                     'message': message, 
+                     'data': captured_data or {} # Ensure data is always an object
+                 }), status_code
+            else: 
+                 # This path should ideally not be reached if DB update happened, but just in case
+                 return jsonify({'success': False, 'message': f"DB update failed or was skipped after reset."}), 500
             
+        # --- Catch Block for Phase 2 ---
         except Exception as e:
             error_message = f"Error: {e}"; status_code = 500
-            if isinstance(e, FileNotFoundError): error_message = "'esptool.py' not found..."
-            elif isinstance(e, subprocess.TimeoutExpired): error_message = f"Reset/Read MAC timed out..."
-            elif isinstance(e, subprocess.CalledProcessError): error_message = f"esptool failed: {e.stderr}"
-            elif isinstance(e, serial.SerialException): error_message = f"Serial error after reset: {e}."
-            elif "Port still busy" in str(e): error_message = str(e); status_code=409 
-            print(f"[Action] Overall Error: {error_message}") 
+            # More specific error messages based on exception type
+            if isinstance(e, FileNotFoundError): error_message = "'esptool.py' not found. Is it installed and in PATH?"
+            elif isinstance(e, subprocess.TimeoutExpired): error_message = f"Reset/Read MAC command timed out after 15s."
+            elif isinstance(e, subprocess.CalledProcessError): error_message = f"esptool command failed: {e.stderr}"
+            elif isinstance(e, serial.SerialException): error_message = f"Serial communication error after reset: {e}."
+            elif "Port still busy" in str(e): error_message = str(e); status_code=409 # Special case for busy port
+            
+            print(f"[Action] Overall Error during Phase 2: {error_message}") 
+            
+            # Attempt to update DB state to reflect the error
             conn = get_db_connection()
             if conn:
                 try:
                     with conn:
-                        state_to_set = 'Action Error'; 
+                        state_to_set = 'Action Error'; # Generic default
                         if 'Serial error' in error_message: state_to_set = 'Capture Serial Error'
                         if 'timed out' in error_message: state_to_set = 'Action Timeout'
                         if 'busy' in error_message: state_to_set = 'Port Busy Error' 
-                        if miner_db_id: conn.execute("UPDATE miners SET state = ?, mac_address = ?, chipset = ? WHERE id = ?;", (state_to_set, mac_address, chipset_info, miner_db_id))
-                        else: conn.execute("UPDATE stray_devices SET state = ?, chipset = ?, mac_address = ? WHERE port_path = ? AND serial_number = ?;", (state_to_set, chipset_info, mac_address, port_path, original_usb_serial)) # Use original key
-                except Exception as db_e: print(f"[Action] Failed state update after error: {db_e}")
-                finally: conn.close()
+                        if 'esptool command failed' in error_message: state_to_set = 'esptool Error'
+
+                        # Update DB with error state, MAC/Chipset if captured before crash
+                        if miner_db_id: 
+                            conn.execute("UPDATE miners SET state = ?, mac_address = ?, chipset = ? WHERE id = ?;", 
+                                         (state_to_set, mac_address, chipset_info, miner_db_id))
+                        else: 
+                            conn.execute("UPDATE stray_devices SET state = ?, chipset = ?, mac_address = ? WHERE port_path = ? AND serial_number = ?;", 
+                                         (state_to_set, chipset_info, mac_address, port_path, original_usb_serial)) 
+                except Exception as db_e: 
+                    print(f"[Action] Failed to update DB state after error: {db_e}")
+                finally: 
+                    conn.close()
+            
+            # Return error response to UI
             return jsonify({'success': False, 'message': error_message}), status_code
             
+        # --- Finally Block for Phase 2 ---
         finally:
+             # This block ensures the final DB state/status is set correctly,
+             # regardless of whether Phase 2 succeeded or failed.
              conn = get_db_connection()
              if conn:
                  try:
-                     if miner_db_id and original_status is not None:
-                          final_status = 'Active' if reset_capture_success and config_found else original_status
-                          final_state = 'Synced' if reset_capture_success and config_found else ('Capture Failed' if reset_capture_success else 'Action Error') 
-                          print(f"[Action] Finalizing status for miner {miner_db_id} to '{final_status}' ('{final_state}')...")
-                          with conn: conn.execute("UPDATE miners SET status = ?, state = ? WHERE id = ? AND status = 'Resetting';", (final_status, final_state, miner_db_id))
-                     elif not miner_db_id:
-                          final_state = 'Captured' if reset_capture_success and config_found else ('Capture Failed' if reset_capture_success else 'Action Error')
-                          print(f"[Action] Finalizing state for stray {port_path}/{original_usb_serial} to '{final_state}'...")
-                          with conn: conn.execute("UPDATE stray_devices SET state = ? WHERE port_path = ? AND serial_number = ?;", (final_state, port_path, original_usb_serial)) # Use original key
-                 except Exception as db_e: print(f"[Action] ERROR finalizing DB status/state: {db_e}")
-                 finally: conn.close()
-             else: print("[Action] ERROR: Could not connect to DB to finalize status.")
+                     final_status = original_status # Default to original
+                     final_state = 'Action Error' # Default if reset failed
+                     
+                     if reset_capture_success: # If Phase 2 completed without crashing
+                        if config_found: 
+                            final_status = 'Active'; final_state = 'Synced'
+                        else: 
+                            final_status = original_status; final_state = 'Capture Failed'
+                     
+                     print(f"[Action] Finalizing DB state...")
+                     with conn:
+                         if miner_db_id: 
+                              print(f"[Action]   Setting miner {miner_db_id} to Status='{final_status}', State='{final_state}' (if currently 'Resetting')...")
+                              # Only update if it's still marked as 'Resetting' to avoid race conditions
+                              conn.execute("UPDATE miners SET status = ?, state = ? WHERE id = ? AND status = 'Resetting';", 
+                                           (final_status, final_state, miner_db_id))
+                         elif not miner_db_id: # Stray device
+                              print(f"[Action]   Setting stray {port_path}/{original_usb_serial} to State='{final_state}'...")
+                              conn.execute("UPDATE stray_devices SET state = ? WHERE port_path = ? AND serial_number = ?;", 
+                                           (final_state, port_path, original_usb_serial)) 
+                 except Exception as db_e: 
+                      print(f"[Action] ERROR during final DB state update: {db_e}")
+                 finally: 
+                      conn.close()
+             else: 
+                  print("[Action] ERROR: Could not connect to DB for final state update.")
 
-    else: return jsonify({'success': False, 'message': f"Unknown action: {action}"}), 400
+    # --- Fallback for Unknown Action ---
+    else: 
+        return jsonify({'success': False, 'message': f"Unknown action requested: {action}"}), 400
+

@@ -15,13 +15,10 @@ DATA_DIR = os.path.expanduser('~/shepherd_data')
 PRICE_CACHE_FILE = os.path.join(DATA_DIR, 'btc_price.json')
 DEVICE_STATE_FILE = os.path.join(DATA_DIR, 'device_state.json') 
 SHEPHERD_SERVICES = [
-    'shepherd-ingestor.service',
-    'shepherd-summarizer.service',
     'shepherd-pricer.service',
     'shepherds-dog.service' 
 ]
-INGESTOR_SERVICE_NAME = 'shepherd-ingestor.service' 
-INGESTOR_POLL_INTERVAL = 15 
+# INGESTOR_SERVICE_NAME and INGESTOR_POLL_INTERVAL are no longer needed
 
 # --- Helper Functions ---
 
@@ -105,3 +102,4 @@ def _get_herd_data():
     finally:
          if conn: conn.close()
     return herd_data
+

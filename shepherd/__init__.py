@@ -3,30 +3,47 @@ import os
 
 def create_app(test_config=None):
     """The application factory. Creates and configures the Flask app."""
-    # By adding template_folder, we explicitly tell Flask to look for the templates
-    # directory one level "up" from this file, which is the project's root directory.
-    app = Flask(__name__, instance_relative_config=True, template_folder='../templates')
+    # Explicitly tell Flask where the templates and static files are relative
+    # to the 'shepherd' package directory (one level up).
+    app = Flask(__name__,
+                instance_relative_config=True,
+                template_folder='../templates',
+                static_folder='../static') # <-- ADDED THIS LINE
+                
     app.secret_key = os.urandom(24)
 
     # Initialize the database
+    # Import database functions AFTER app creation to avoid circular imports if needed
     from . import database
-    database.init_db()
-    
-    # --- NEW: Register all our new blueprints ---
+    try:
+        database.init_db()
+        print("[App Factory] Database initialized/verified.")
+    except Exception as e:
+        print(f"[App Factory] CRITICAL ERROR during database initialization: {e}")
+        # Depending on severity, you might want to raise the exception
+        # or handle it gracefully (e.g., show an error page).
+        # For now, we'll just print it and continue.
 
-    # Register the page-serving routes
-    from . import view_routes
-    app.register_blueprint(view_routes.bp)
+    # Register blueprints for different route modules
+    print("[App Factory] Registering blueprints...")
+    try:
+        from . import view_routes
+        app.register_blueprint(view_routes.bp)
+        print("  - Registered view_routes (main)")
 
-    # Register the API routes (with /api prefix)
-    from . import api_routes
-    app.register_blueprint(api_routes.bp)
+        from . import api_routes
+        app.register_blueprint(api_routes.bp, url_prefix='/api') # APIs live under /api
+        print("  - Registered api_routes (api)")
 
-    # Register the action/form routes
-    from . import action_routes
-    app.register_blueprint(action_routes.bp)
-    
-    # The old 'routes.py' is no longer imported or used.
+        from . import action_routes
+        app.register_blueprint(action_routes.bp) # Actions can live at root for simplicity
+        print("  - Registered action_routes (actions)")
 
-    print("Flask app created and configured with modular routes.")
+    except Exception as e:
+        print(f"[App Factory] CRITICAL ERROR during blueprint registration: {e}")
+        # This is likely fatal, so re-raising might be appropriate
+        raise e
+
+    print("[App Factory] Flask app created and configured successfully.")
     return app
+
