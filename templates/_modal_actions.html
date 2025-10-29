@@ -1,0 +1,29 @@
+<!-- 
+templates/_modal_actions.html
+Version: 1.0.0
+Description: Partial template for the "Miner Actions" modal (for offline/stale miners).
+-->
+<div id="actions-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden z-50">
+    <div class="bg-gray-800 rounded-lg p-6 max-w-lg w-full">
+        <h2 class="text-2xl font-bold text-white mb-4">Miner Actions</h2>
+        <div class="space-y-2 text-sm bg-gray-900 p-3 rounded-md font-mono mb-6">
+            <p><strong class="text-gray-400 w-24 inline-block">Miner ID:</strong> <span id="actions-miner-id" class="text-cyan-400"></span></p>
+            <p><strong class="text-gray-400 w-24 inline-block">Status:</strong> <span id="actions-status"></span></p>
+            <p><strong class="text-gray-400 w-24 inline-block">State:</strong> <span id="actions-state"></span></p>
+            <p><strong class="text-gray-400 w-24 inline-block">Dev Path:</strong> <span id="actions-dev-path"></span></p>
+            <p><strong class="text-gray-400 w-24 inline-block">Port Path:</strong> <span id="actions-port-path"></span></p>
+            <p><strong class="text-gray-400 w-24 inline-block">Serial:</strong> <span id="actions-serial"></span></p>
+            <p><strong class="text-gray-400 w-24 inline-block">Location:</strong> <span id="actions-location"></span></p>
+        </div>
+        <div class="flex justify-between items-center">
+            <div>
+                <button type="button" onclick="showEditForm()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded">Edit</button>
+                <button type="button" onclick="showDeleteForm()" class="bg-red-700 hover:bg-red-600 text-white font-bold py-2 px-4 rounded ml-2">Delete</button>
+            </div>
+            <div class="flex gap-4">
+                <button type="button" onclick="closeModal('actions-modal')" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">Cancel</button>
+                <button type="button" onclick="runMinerAction(this)" class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded" id="actions-reset-button">Reset & Capture</button>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,28 @@
+<!-- 
+templates/_modal_details.html
+Version: 1.0.0
+Description: Partial template for the "Miner Details" modal.
+-->
+<div id="details-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden z-50">
+    <div class="bg-gray-800 rounded-lg p-6 max-w-lg w-full">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold text-white">Miner Details</h2>
+            <button onclick="closeModal('details-modal')" class="text-gray-400 hover:text-white">&times;</button>
+        </div>
+        <div class="space-y-2 text-sm bg-gray-900 p-3 rounded-md font-mono">
+            <p><strong class="text-gray-400 w-24 inline-block">Miner ID:</strong> <span id="details-miner-id" class="text-cyan-400"></span></p>
+            <p><strong class="text-gray-400 w-24 inline-block">Status:</strong> <span id="details-status"></span></p>
+            <p><strong class="text-gray-400 w-24 inline-block">Pool:</strong> <span id="details-pool"></span></p>
+            <p><strong class="text-gray-400 w-24 inline-block">Wallet:</strong> <span id="details-wallet"></span></p>
+            <p><strong class="text-gray-400 w-24 inline-block">Version:</strong> <span id="details-version"></span></p>
+            <p><strong class="text-gray-400 w-24 inline-block">Dev Path:</strong> <span id="details-dev-path"></span></p>
+            <p><strong class="text-gray-400 w-24 inline-block">Port Path:</strong> <span id="details-port-path"></span></p>
+            <p><strong class="text-gray-400 w-24 inline-block">Serial:</strong> <span id="details-serial"></span></p>
+            <p><strong class="text-gray-400 w-24 inline-block">Location:</strong> <span id="details-location"></span></p>
+        </div>
+        <div class="flex justify-between items-center mt-6">
+            <button type="button" onclick="runMinerAction(this)" class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded">Reset & Capture Config</button>
+            <button type="button" onclick="closeModal('details-modal')" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">Close</button>
+        </div>
+    </div>
+</div>

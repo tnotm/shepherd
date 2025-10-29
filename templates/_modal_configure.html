@@ -1,0 +1,67 @@
+<!-- 
+templates/_modal_configure.html
+Version: 1.0.0
+Description: Partial template for the "Configure New Device" (stray) modal.
+-->
+<div id="configure-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden z-50">
+    <div class="bg-gray-800 rounded-lg p-6 max-w-lg w-full">
+        <h2 class="text-2xl font-bold text-white mb-4">Configure New Device</h2>
+        <p class="text-gray-400 mb-6">This device isn't configured. You can capture its config or assign it a name to add it to your flock.</p>
+        
+        <!-- Device Info -->
+        <div class="space-y-1 text-sm bg-gray-900 p-3 rounded-md mb-4 font-mono">
+            <p><strong class="text-gray-400 w-24 inline-block">Device Path:</strong> <span id="config-dev-path" class="text-cyan-400"></span></p>
+            <p><strong class="text-gray-400 w-24 inline-block">Port Path:</strong> <span id="config-port-path" class="text-cyan-400"></span></p>
+            <p><strong class="text-gray-400 w-24 inline-block">USB Serial:</strong> <span id="config-serial"></span></p> 
+            <p><strong class="text-gray-400 w-24 inline-block">Vendor ID:</strong> <span id="config-vendor"></span></p>
+            <p><strong class="text-gray-400 w-24 inline-block">Product ID:</strong> <span id="config-product"></span></p>
+            <!-- Display captured config if available -->
+            <div id="config-captured-info" class="mt-2 pt-2 border-t border-gray-700 hidden">
+                <p><strong class="text-gray-400 w-24 inline-block">Capt. Chipset:</strong> <span id="config-captured-chipset" class="text-yellow-300"></span></p> 
+                <p><strong class="text-gray-400 w-24 inline-block">Capt. MAC:</strong> <span id="config-captured-mac" class="text-yellow-300"></span></p> 
+                <p><strong class="text-gray-400 w-24 inline-block">Capt. Pool:</strong> <span id="config-captured-pool" class="text-yellow-300"></span></p>
+                <p><strong class="text-gray-400 w-24 inline-block">Capt. Wallet:</strong> <span id="config-captured-wallet" class="text-yellow-300"></span></p>
+                <p><strong class="text-gray-400 w-24 inline-block">Capt. Version:</strong> <span id="config-captured-version" class="text-yellow-300"></span></p>
+            </div>
+        </div>
+
+        <!-- Onboard Form -->
+        <form id="onboard-form" onsubmit="onboardStray(event)" data-url-onboard="{{ url_for('actions.onboard_stray_miner') }}">
+            <input type="hidden" id="config-form-dev-path" name="dev_path">
+            <input type="hidden" id="config-form-port-path" name="port_path">
+            <input type="hidden" id="config-form-serial" name="serial_number"> 
+            <input type="hidden" id="config-form-vendor" name="vendor_id">
+            <input type="hidden" id="config-form-product" name="product_id">
+            <input type="hidden" id="config-form-pool" name="pool_url">
+            <input type="hidden" id="config-form-wallet" name="wallet_address">
+            <input type="hidden" id="config-form-version" name="version">
+            <input type="hidden" id="config-form-chipset" name="chipset"> 
+            <input type="hidden" id="config-form-mac" name="mac_address"> 
+            
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label for="onboard_miner_id" class="block text-sm font-medium text-gray-300">Miner ID</label>
+                    <input type="text" id="onboard_miner_id" name="miner_id" required class="mt-1 block w-full bg-gray-700 p-2 rounded-md text-white">
+                </div>
+                 <div>
+                    <label for="onboard_currency" class="block text-sm font-medium text-gray-300">Currency</label>
+                    <select id="onboard_currency" name="currency" required class="mt-1 block w-full bg-gray-700 p-2 rounded-md text-white">
+                        <option value="BTC">BTC</option> <option value="LTC">LTC</option> <option value="DOGE">DOGE</option> <option value="OTHER">Other</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mt-4">
+                <label for="onboard_location_notes" class="block text-sm font-medium text-gray-300">Location Notes (Optional)</label>
+                <input type="text" id="onboard_location_notes" name="location_notes" class="mt-1 block w-full bg-gray-700 p-2 rounded-md text-white">
+            </div>
+
+            <div class="flex justify-between items-center mt-6">
+                <button type="button" onclick="runMinerAction(this)" class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded">Reset & Capture Config</button>
+                <div class="flex justify-end gap-4">
+                    <button type="button" onclick="closeModal('configure-modal')" class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">Cancel</button>
+                    <button type="submit" class="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded">Add to Flock</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
